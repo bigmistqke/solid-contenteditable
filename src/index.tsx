@@ -381,8 +381,6 @@ export function ContentEditable(props: ContentEditableProps) {
           undo,
         } = patch
 
-        console.log('data', data)
-
         setValue(
           value => `${value.slice(0, start)}${undo?.data || ''}${value.slice(start + data.length)}`,
         )
@@ -436,7 +434,6 @@ export function ContentEditable(props: ContentEditableProps) {
         if (selection) {
           select(selection.start, selection.end)
         } else {
-          console.log(start, data.length)
           select(start + data.length)
         }
         break
