@@ -1,4 +1,6 @@
 import {
+  children,
+  createEffect,
   createMemo,
   createSignal,
   mergeProps,
@@ -298,26 +300,27 @@ function createAction(
 
 export interface ContentEditableProps
   extends Omit<ComponentProps<'div'>, 'onInput' | 'children' | 'contenteditable' | 'style'> {
+  children?: (source: string) => JSX.Element
   editable?: boolean
-  onDerivation?: (source: string) => JSX.Element
-  onValue?: (value: string) => void
   onPatch?: (event: KeyboardEvent & { currentTarget: HTMLElement }) => Patch | null
+  onValue?: (value: string) => void
   style?: JSX.CSSProperties
   value: string
 }
 
 export function ContentEditable(props: ContentEditableProps) {
   const [config, rest] = splitProps(mergeProps({ spellcheck: false, editable: true }, props), [
+    'children',
     'editable',
-    'onDerivation',
-    'onValue',
     'onPatch',
+    'onValue',
     'style',
     'value',
   ])
   const [value, setValue] = createWritable(() => props.value)
   let element: HTMLDivElement = null!
   const history = createHistory()
+  const c = children(() => props.children?.(value()) || value())
 
   function applyPatch(patch: Patch) {
     history.push(patch)
@@ -483,6 +486,22 @@ export function ContentEditable(props: ContentEditableProps) {
     }
   }
 
+  createEffect(() => {
+    if (
+      c
+        .toArray()
+        .map(value => (value instanceof Element ? value.textContent : value))
+        .join('') !== value()
+    ) {
+      console.warn(
+        `⚠️ WARNING ⚠️
+- props.value and the textContent of props.children should be equal!
+- This will break <ContentEditable/>!
+- see www.github.com/bigmistqke/solid-contenteditable/#gotcha`,
+      )
+    }
+  })
+
   return (
     <div
       ref={element}
@@ -493,7 +512,7 @@ export function ContentEditable(props: ContentEditableProps) {
       style={{ 'white-space': 'pre-wrap', ...config.style }}
       {...rest}
     >
-      {props.onDerivation?.(value()) || value()}
+      {c()}
     </div>
   )
 }
