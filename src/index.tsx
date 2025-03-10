@@ -15,11 +15,10 @@ export type Patch = {
   action: {
     range: RangeVector
     data?: string
-    selection?: RangeVector
   }
   undo?: {
     data: string
-    selection?: RangeVector
+    range?: RangeVector
   }
 }
 
@@ -45,11 +44,11 @@ function createWritable<T>(fn: () => T) {
 
 /**********************************************************************************/
 /*                                                                                */
-/*                               Get Selection Range                              */
+/*                                Get Selected Range                              */
 /*                                                                                */
 /**********************************************************************************/
 
-export function getSelectionRange(element: HTMLElement): RangeVector {
+export function getSelectedRange(element: HTMLElement): RangeVector {
   const selection = document.getSelection()
 
   if (!selection || selection.rangeCount === 0) {
@@ -93,6 +92,8 @@ function getNodeAndOffsetAtIndex(element: HTMLElement, index: number) {
       }
     }
   }
+
+  throw `Could not find node`
 }
 
 /**********************************************************************************/
@@ -136,76 +137,183 @@ function createHistory() {
 /*                                                                                */
 /**********************************************************************************/
 
-function deleteContentForward(source: string, range: RangeVector) {
+function deleteContentForward(source: string, range: RangeVector): Patch {
+  const end = range.start === range.end ? Math.min(source.length - 1, range.end + 1) : range.end
+
   return {
-    range: {
-      start: range.start,
-      end: range.start === range.end ? Math.min(source.length - 1, range.end + 1) : range.end,
+    action: {
+      range: {
+        start: range.start,
+        end,
+      },
+    },
+    undo: {
+      data: source.slice(range.start, end),
+      range: {
+        start: range.start,
+        end,
+      },
     },
   }
 }
 
-function deleteContentBackward(source: string, range: RangeVector) {
+function deleteContentBackward(source: string, range: RangeVector): Patch {
+  const start = range.start === range.end ? Math.max(0, range.start - 1) : range.start
+
   return {
-    range: {
-      start: range.start === range.end ? Math.max(0, range.start - 1) : range.start,
-      end: range.end,
+    action: {
+      range: {
+        start,
+        end: range.end,
+      },
+    },
+    undo: {
+      data: source.slice(start, range.end),
+      range: {
+        start,
+        end: range.end,
+      },
     },
   }
 }
 
-function deleteWord(source: string, range: RangeVector, direction: number) {
-  let index = range.start
+function deleteWordBackward(source: string, range: RangeVector): Patch {
+  let start = range.start
 
   // If the previous value is whitespace,
   // increment to next non-whitespace character
-  if (isWhiteSpace(source[index + direction])) {
-    while (index > 0 && isWhiteSpace(source[index + direction])) {
-      index += direction
+  if (isWhiteSpace(source[start - 1])) {
+    while (start > 0 && isWhiteSpace(source[start - 1])) {
+      start--
     }
   }
   // If the previous value is alphanumeric,
   // we delete all previous alphanumeric values
-  if (isAlphanumeric(source[index + direction])) {
-    while (index > 0 && isAlphanumeric(source[index + direction])) {
-      index += direction
+  if (isAlphanumeric(source[start - 1])) {
+    while (start > 0 && isAlphanumeric(source[start - 1])) {
+      start--
     }
   } else {
     // If the previous value is not alphanumeric,
     // we delete all previous non-alphanumeric values
     // until the next whitespace or alphanumeric
-    while (
-      index > 0 &&
-      !isWhiteSpace(source[index + direction]) &&
-      !isAlphanumeric(source[index + direction])
-    ) {
-      index += direction
+    while (start > 0 && !isWhiteSpace(source[start - 1]) && !isAlphanumeric(source[start - 1])) {
+      start--
     }
   }
 
   return {
-    range: {
-      start: index,
-      end: range.end,
+    action: {
+      range: {
+        start,
+        end: range.end,
+      },
+    },
+    undo: {
+      data: source.slice(start, range.end),
+      range: {
+        start,
+        end: range.end,
+      },
     },
   }
 }
 
-function deleteSoftLine(source: string, range: RangeVector, direction: number) {
-  let index = range.start
+function deleteWordForward(source: string, range: RangeVector): Patch {
+  let end = range.end
 
-  if (isNewLine(source[index + direction])) {
-    index -= 1
+  // If the previous value is whitespace,
+  // increment to next non-whitespace character
+  if (isWhiteSpace(source[end])) {
+    while (end < source.length && isWhiteSpace(source[end])) {
+      end += 1
+    }
+  }
+  // If the previous value is alphanumeric,
+  // we delete all previous alphanumeric values
+  if (isAlphanumeric(source[end])) {
+    while (end > 0 && isAlphanumeric(source[end])) {
+      end += 1
+    }
   } else {
-    while (index > 0 && !isNewLine(source[index + direction])) {
-      index += direction
+    // If the previous value is not alphanumeric,
+    // we delete all previous non-alphanumeric values
+    // until the next whitespace or alphanumeric
+    while (end < source.length - 1 && !isWhiteSpace(source[end]) && !isAlphanumeric(source[end])) {
+      end += 1
     }
   }
 
   return {
-    range: {
-      start: index,
-      end: range.end,
+    action: {
+      range: {
+        start: range.start,
+        end,
+      },
+    },
+    undo: {
+      data: source.slice(range.start, end),
+      range: {
+        start: range.start,
+        end,
+      },
+    },
+  }
+}
+
+function deleteSoftLineBackward(source: string, range: RangeVector): Patch {
+  let start = range.start
+
+  if (isNewLine(source[start - 1])) {
+    start -= 1
+  } else {
+    while (start > 0 && !isNewLine(source[start - 1])) {
+      start -= 1
+    }
+  }
+
+  return {
+    action: {
+      range: {
+        start,
+        end: range.end,
+      },
+    },
+    undo: {
+      data: source.slice(start, range.end),
+      range: {
+        start,
+        end: range.end,
+      },
+    },
+  }
+}
+
+function deleteSoftLineForward(source: string, range: RangeVector): Patch {
+  let end = range.end
+
+  if (isNewLine(source[end + 1])) {
+    end += 1
+  } else {
+    while (end > 0 && !isNewLine(source[end + 1])) {
+      end += 1
+    }
+  }
+
+  return {
+    action: {
+      range: {
+        start: range.start,
+        end,
+      },
+      data: '\n',
+    },
+    undo: {
+      data: source.slice(range.start, end),
+      range: {
+        start: range.start,
+        end,
+      },
     },
   }
 }
@@ -216,27 +324,23 @@ function deleteSoftLine(source: string, range: RangeVector, direction: number) {
 /*                                                                                */
 /**********************************************************************************/
 
-function createPatch(event: InputEvent & { currentTarget: HTMLElement }, source: string): Patch {
-  const range = getSelectionRange(event.currentTarget)
+function createDefaultUndo(source: string, range: RangeVector) {
   return {
-    action: createAction(event, source, range),
-    undo: {
-      data: source.slice(range.start, range.end),
-      selection: range,
-    },
+    data: source.slice(range.start, range.end),
+    range,
   }
 }
 
-function createAction(
-  event: InputEvent & { currentTarget: HTMLElement },
-  source: string,
-  range: RangeVector,
-): Patch['action'] {
+function createPatch(event: InputEvent & { currentTarget: HTMLElement }, source: string): Patch {
+  const range = getSelectedRange(event.currentTarget)
   switch (event.inputType) {
     case 'insertText': {
       return {
-        range,
-        data: event.data || '',
+        action: {
+          range,
+          data: event.data || '',
+        },
+        undo: createDefaultUndo(source, range),
       }
     }
     case 'deleteContentBackward': {
@@ -249,42 +353,51 @@ function createAction(
       if (range.start !== range.end) {
         return deleteContentBackward(source, range)
       }
-      return deleteWord(source, range, -1)
+      return deleteWordBackward(source, range)
     }
     case 'deleteWordForward': {
       if (range.start !== range.end) {
         return deleteContentForward(source, range)
       }
-      return deleteWord(source, range, -1)
+      return deleteWordForward(source, range)
     }
     case 'deleteSoftLineBackward': {
       if (range.start !== range.end) {
-        return deleteContentForward(source, range)
+        return deleteContentBackward(source, range)
       }
-      return deleteSoftLine(source, range, -1)
+      return deleteSoftLineBackward(source, range)
     }
     case 'deleteSoftLineForward': {
       if (range.start !== range.end) {
         return deleteContentForward(source, range)
       }
-      return deleteSoftLine(source, range, 1)
+      return deleteSoftLineForward(source, range)
     }
     case 'deleteByCut': {
       return {
-        range,
+        action: {
+          range,
+        },
+        undo: createDefaultUndo(source, range),
       }
     }
     case 'insertReplacementText':
     case 'insertFromPaste': {
       return {
-        range,
-        data: event.dataTransfer?.getData('text'),
+        action: {
+          range,
+          data: event.dataTransfer?.getData('text'),
+        },
+        undo: createDefaultUndo(source, range),
       }
     }
     case 'insertParagraph': {
       return {
-        range,
-        data: '\n',
+        action: {
+          range,
+          data: '\n',
+        },
+        undo: createDefaultUndo(source, range),
       }
     }
     default:
@@ -318,9 +431,16 @@ export function ContentEditable(props: ContentEditableProps) {
     'value',
   ])
   const [value, setValue] = createWritable(() => props.value)
-  let element: HTMLDivElement = null!
+  // Add an additional newline if the value ends with a newline,
+  // otherwise the browser will remove that trailing newline
+  const valueWithTrailingNewLine = createMemo(() =>
+    value().endsWith('\n') ? `${value()}\n` : value(),
+  )
+  const c = children(
+    () => props.children?.(valueWithTrailingNewLine()) || valueWithTrailingNewLine(),
+  )
   const history = createHistory()
-  const c = children(() => props.children?.(value()) || value())
+  let element: HTMLDivElement = null!
 
   function applyPatch(patch: Patch) {
     history.push(patch)
@@ -340,27 +460,21 @@ export function ContentEditable(props: ContentEditableProps) {
   }
 
   function select(start: number, end?: number) {
-    const result = getNodeAndOffsetAtIndex(element, start)
-
-    if (!result) {
-      console.error('node is not an instance of Node', result)
-      return
-    }
-
-    const { node, offset } = result
-
     const selection = document.getSelection()!
     const range = document.createRange()
     selection.removeAllRanges()
-    selection.addRange(range)
 
-    range.setStart(node, offset)
+    const resultStart = getNodeAndOffsetAtIndex(element, start)
+    range.setStart(resultStart.node, resultStart.offset)
 
     if (end) {
-      range.setEnd(node, end)
+      const resultEnd = getNodeAndOffsetAtIndex(element, end)
+      range.setEnd(resultEnd.node, resultEnd.offset)
     } else {
-      range.setEnd(node, offset)
+      range.setEnd(resultStart.node, resultStart.offset)
     }
+
+    selection.addRange(range)
   }
 
   function onInput(event: InputEvent & { currentTarget: HTMLDivElement }) {
@@ -374,9 +488,8 @@ export function ContentEditable(props: ContentEditableProps) {
 
         const {
           action: {
-            range: { start },
+            range: { start, end },
             data = '',
-            selection,
           },
           undo,
         } = patch
@@ -385,8 +498,8 @@ export function ContentEditable(props: ContentEditableProps) {
           value => `${value.slice(0, start)}${undo?.data || ''}${value.slice(start + data.length)}`,
         )
 
-        if (selection) {
-          select(selection.start, selection.end)
+        if (undo?.range) {
+          select(undo.range.start, undo.range.end)
         } else {
           select(start + (undo?.data?.length || 0))
         }
@@ -407,6 +520,7 @@ export function ContentEditable(props: ContentEditableProps) {
             data = '',
             selection,
           },
+          undo,
         } = patch
 
         if (selection) {
@@ -488,7 +602,7 @@ export function ContentEditable(props: ContentEditableProps) {
       c
         .toArray()
         .map(value => (value instanceof Element ? value.textContent : value))
-        .join('') !== value()
+        .join('') !== valueWithTrailingNewLine()
     ) {
       console.warn(
         `⚠️ WARNING ⚠️
