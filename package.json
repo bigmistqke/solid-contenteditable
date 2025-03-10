@@ -1,6 +1,6 @@
 {
-  "name": "solid-contenteditable",
-  "version": "0.0.0",
+  "name": "@bigmistqke/solid-contenteditable",
+  "version": "0.0.1",
   "description": "contenteditable build with solid-js",
   "license": "MIT",
   "author": "bigmistqke",
@@ -84,5 +84,12 @@
   "engines": {
     "node": ">=18",
     "pnpm": ">=9.0.0"
+  },
+  "directories": {
+    "test": "test"
+  },
+  "dependencies": {
+    "eslint-scope": "^7.2.2",
+    "eslint-visitor-keys": "^3.4.3"
   }
 }
