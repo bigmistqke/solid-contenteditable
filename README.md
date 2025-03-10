@@ -59,4 +59,4 @@ export function App() {
 
 ## Gotcha
 
-`<ContentEditable/>` assumes that the generated content of `props.children(value)` is identical to `props.value`, this means that newlines and whitespaces should match up. Additional tags can be added and will not cause issues.
+`<ContentEditable/>` assumes that the `textContent` of `props.children(value)` is identical to `props.value`: newlines (`\n`) and whitespaces (` `) should match up. Additional tags can be added and will not cause issues.
