@@ -14,6 +14,7 @@ const isMac = navigator.platform.startsWith('Mac')
 type RangeVector = { start: number; end: number }
 
 export type Patch<T = never> = {
+  // see https://w3c.github.io/input-events/#interface-InputEvent-Attributes
   kind:
     | 'insertFromPaste'
     | 'insertParagraph'
@@ -26,6 +27,7 @@ export type Patch<T = never> = {
     | 'deleteWordForward'
     | 'deleteSoftLineBackward'
     | 'deleteSoftLineForward'
+    | 'caret'
     | T
   data?: string
   range: RangeVector
@@ -501,10 +503,13 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
           if (!patch) return
 
           const {
+            kind,
             range: { start },
             data = '',
             undo = '',
           } = patch
+
+          if (kind === 'caret') continue
 
           setTextContent(
             value => `${value.slice(0, start)}${undo}${value.slice(start + data.length)}`,
@@ -528,9 +533,12 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
 
           applyPatch(patch)
           const {
+            kind,
             range: { start },
             data = '',
           } = patch
+
+          if (kind === 'caret') continue
 
           select(start + data.length)
 
@@ -567,6 +575,15 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       if (patch) {
         applyPatch(patch)
       }
+    }
+
+    if (event.key.startsWith('Arrow')) {
+      history.past.push({
+        kind: 'caret',
+        range: getSelectedRange(event.currentTarget),
+        undo: '',
+      })
+      return
     }
 
     if (isMac) {
