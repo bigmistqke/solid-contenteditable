@@ -395,12 +395,11 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
         editable: true,
         singleline: false,
         historyStrategy(currentPatch: Patch<T>, nextPatch: Patch<T>) {
-          return !(currentPatch.kind !== 'insertText' ||
-          nextPatch.kind !== 'insertText' ||
-          // Concatenate whitespaces or non-whitespaces
-          currentPatch.data === ' '
-            ? currentPatch.data === ' ' && nextPatch.data !== ' '
-            : currentPatch.data !== ' ' && nextPatch.data === ' ')
+          return !(
+            currentPatch.kind !== 'insertText' ||
+            nextPatch.kind !== 'insertText' ||
+            (currentPatch.data === ' ' && nextPatch.data !== ' ')
+          )
         },
       } satisfies Partial<ContentEditableProps>,
       props,

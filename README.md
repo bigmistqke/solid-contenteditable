@@ -59,8 +59,11 @@ import { createSignal, For, Show } from 'solid-js'
 function HashTagHighlighter() {
   const [text, setText] = createSignal('this is a #hashtag')
   return (
-    <ContentEditable textContent={text} onTextContent={setText} singleline>
-      {textContent => (
+    <ContentEditable
+      textContent={text}
+      onTextContent={setText}
+      singleline
+      render={textContent => (
         <For each={textContent.split(' ')}>
           {(word, wordIndex) => (
             <>
@@ -72,7 +75,7 @@ function HashTagHighlighter() {
           )}
         </For>
       )}
-    </ContentEditable>
+    />
   )
 }
 ```
@@ -86,20 +89,19 @@ function HashTagHighlighter() {
 The default `historyStrategy` implementation in `<ContentEditable/>` behaves as follows:
 
 - It only merges consecutive text insertions (`insertText`).
-- It will concatenate patches when they both involve adding either whitespace or non-whitespace characters.
+- It will concatenate patches when current character is a whitespace and the following is a non-whitespace.
 
 <details>
   <summary>Implementation</summary>
 
 ```tsx
-  function (currentPatch: Patch, nextPatch: Patch) {
-    return !(
-      currentPatch.kind !== 'insertText' ||
-      nextPatch.kind !== 'insertText' ||
-      // Concatenate whitespaces or non-whitespaces
-      (currentPatch.data === ' ') !== (nextPatch.data === ' ')
-    )
-  }
+function(currentPatch: Patch, nextPatch: Patch) {
+  return !(
+    currentPatch.kind !== 'insertText' ||
+    nextPatch.kind !== 'insertText' ||
+    (currentPatch.data === ' ' && nextPatch.data !== ' ')
+  )
+}
 ```
 
 </details>
