@@ -1,6 +1,6 @@
 {
   "name": "@bigmistqke/solid-contenteditable",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "contenteditable build with solid-js",
   "license": "MIT",
   "author": "bigmistqke",
