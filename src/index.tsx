@@ -9,6 +9,8 @@ import {
   type JSX,
 } from 'solid-js'
 
+const isMac = navigator.platform.startsWith('Mac')
+
 type RangeVector = { start: number; end: number }
 
 export type Patch<T = never> = {
@@ -349,6 +351,34 @@ function createPatchFromEvent(
 
 /**********************************************************************************/
 /*                                                                                */
+/*                             Dispatch History Event                             */
+/*                                                                                */
+/**********************************************************************************/
+
+function dispatchRedoEvent(event: KeyboardEvent & { currentTarget: HTMLElement }) {
+  event.preventDefault()
+  event.currentTarget.dispatchEvent(
+    new InputEvent('input', {
+      inputType: 'historyRedo',
+      bubbles: true,
+      cancelable: true,
+    }),
+  )
+}
+
+function dispatchUndoEvent(event: KeyboardEvent & { currentTarget: HTMLElement }) {
+  event.preventDefault()
+  event.currentTarget.dispatchEvent(
+    new InputEvent('input', {
+      inputType: 'historyUndo',
+      bubbles: true,
+      cancelable: true,
+    }),
+  )
+}
+
+/**********************************************************************************/
+/*                                                                                */
 /*                                Content Editable                                */
 /*                                                                                */
 /**********************************************************************************/
@@ -538,30 +568,28 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
         applyPatch(patch)
       }
     }
-    if (event.ctrlKey || event.metaKey) {
-      switch (event.key) {
-        // Undo: ctrl+z
-        case 'z': {
-          event.preventDefault()
-          event.currentTarget.dispatchEvent(
-            new InputEvent('input', {
-              inputType: 'historyUndo',
-              bubbles: true,
-              cancelable: true,
-            }),
-          )
-          break
+
+    if (isMac) {
+      if (event.metaKey) {
+        switch (event.key) {
+          case 'z':
+            dispatchUndoEvent(event)
+            break
+          case 'Z':
+            dispatchRedoEvent(event)
+            break
         }
-        // Redo: ctrl+shift+z
-        case 'Z': {
-          event.preventDefault()
-          event.currentTarget.dispatchEvent(
-            new InputEvent('input', {
-              inputType: 'historyRedo',
-              bubbles: true,
-              cancelable: true,
-            }),
-          )
+      }
+    } else {
+      if (event.ctrlKey) {
+        switch (event.key) {
+          case 'z':
+            dispatchUndoEvent(event)
+            break
+          case 'y':
+          case 'Z':
+            dispatchRedoEvent(event)
+            break
         }
       }
     }
