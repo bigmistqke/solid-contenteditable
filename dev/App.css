@@ -1,0 +1,31 @@
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 0;
+  background-color: #282c34;
+  overscroll-behavior: none;
+  color: white;
+}
+
+h1 {
+  text-align: center;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 50px;
+  max-width: 600px;
+
+  & > div,
+  & > textarea,
+  & > input {
+    display: inline-block;
+    border: 1px solid white;
+    border-radius: 5px;
+    background: rgba(218, 218, 218, 0.211);
+    padding: 10px;
+    color: white;
+  }
+}

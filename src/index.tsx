@@ -11,7 +11,20 @@ import {
 
 type RangeVector = { start: number; end: number }
 
-export type Patch = {
+export type Patch<T = never> = {
+  kind:
+    | 'insertFromPaste'
+    | 'insertParagraph'
+    | 'insertReplacementText'
+    | 'insertText'
+    | 'deleteByCut'
+    | 'deleteContentForward'
+    | 'deleteContentBackward'
+    | 'deleteWordBackward'
+    | 'deleteWordForward'
+    | 'deleteSoftLineBackward'
+    | 'deleteSoftLineForward'
+    | T
   data?: string
   range: RangeVector
   undo: string
@@ -97,36 +110,40 @@ function getNodeAndOffsetAtIndex(element: HTMLElement, index: number) {
 /*                                                                                */
 /**********************************************************************************/
 
-function createHistory() {
-  const [past, setPast] = createSignal<Patch[]>([])
-  const [future, setFuture] = createSignal<Patch[]>([])
-
-  function clearFuture() {
-    setFuture(future => (future.length > 0 ? [] : future))
-  }
-
-  function push(patch: Patch) {
-    setPast(patches => [...patches, patch])
-  }
-
-  function pop() {
-    const patch = past().pop()
-    if (patch) {
-      setFuture(patches => [...patches, patch])
-    }
-    return patch
-  }
+function createHistory<T extends string = never>() {
+  let past: Array<Patch<T>> = []
+  let future: Array<Patch<T>> = []
 
   return {
-    get past() {
-      return past()
+    future: {
+      clear() {
+        future.length = 0
+      },
+      pop() {
+        return future.pop()
+      },
+      peek() {
+        return future[future.length - 1]
+      },
+      push(patch: Patch<T>) {
+        future.push(patch)
+      },
     },
-    get future() {
-      return future()
+    past: {
+      pop() {
+        const patch = past.pop()
+        if (patch) {
+          future.push(patch)
+        }
+        return patch
+      },
+      peek() {
+        return past[past.length - 1]
+      },
+      push(patch: Patch<T>) {
+        past.push(patch)
+      },
     },
-    clearFuture,
-    push,
-    pop,
   }
 }
 
@@ -136,8 +153,14 @@ function createHistory() {
 /*                                                                                */
 /**********************************************************************************/
 
-function createPatch(source: string, range: RangeVector, data?: string): Patch {
+function createPatch(
+  kind: Patch['kind'],
+  source: string,
+  range: RangeVector,
+  data?: string,
+): Patch {
   return {
+    kind,
     range,
     data,
     undo: source.slice(range.start, range.end),
@@ -147,7 +170,7 @@ function createPatch(source: string, range: RangeVector, data?: string): Patch {
 function deleteContentForward(source: string, range: RangeVector): Patch {
   const end = range.start === range.end ? Math.min(source.length - 1, range.end + 1) : range.end
 
-  return createPatch(source, {
+  return createPatch('deleteContentForward', source, {
     start: range.start,
     end,
   })
@@ -156,7 +179,7 @@ function deleteContentForward(source: string, range: RangeVector): Patch {
 function deleteContentBackward(source: string, range: RangeVector): Patch {
   const start = range.start === range.end ? Math.max(0, range.start - 1) : range.start
 
-  return createPatch(source, {
+  return createPatch('deleteContentBackward', source, {
     start,
     end: range.end,
   })
@@ -172,7 +195,6 @@ function deleteWordBackward(source: string, range: RangeVector): Patch {
       start--
     }
   }
-
   // If the previous value is alphanumeric,
   // we delete all previous alphanumeric values
   if (isAlphanumeric(source[start - 1])) {
@@ -188,7 +210,7 @@ function deleteWordBackward(source: string, range: RangeVector): Patch {
     }
   }
 
-  return createPatch(source, {
+  return createPatch('deleteWordBackward', source, {
     start,
     end: range.end,
   })
@@ -204,7 +226,6 @@ function deleteWordForward(source: string, range: RangeVector): Patch {
       end += 1
     }
   }
-
   // If the previous value is alphanumeric,
   // we delete all previous alphanumeric values
   if (isAlphanumeric(source[end])) {
@@ -220,7 +241,7 @@ function deleteWordForward(source: string, range: RangeVector): Patch {
     }
   }
 
-  return createPatch(source, {
+  return createPatch('deleteWordForward', source, {
     start: range.start,
     end,
   })
@@ -237,7 +258,7 @@ function deleteSoftLineBackward(source: string, range: RangeVector): Patch {
     }
   }
 
-  return createPatch(source, {
+  return createPatch('deleteSoftLineBackward', source, {
     start,
     end: range.end,
   })
@@ -254,7 +275,7 @@ function deleteSoftLineForward(source: string, range: RangeVector): Patch {
     }
   }
 
-  return createPatch(source, {
+  return createPatch('deleteSoftLineForward', source, {
     start: range.start,
     end,
   })
@@ -262,19 +283,19 @@ function deleteSoftLineForward(source: string, range: RangeVector): Patch {
 
 /**********************************************************************************/
 /*                                                                                */
-/*                            Create Patch From Event                             */
+/*                             Create Patch From Event                            */
 /*                                                                                */
 /**********************************************************************************/
 
 function createPatchFromEvent(
   event: InputEvent & { currentTarget: HTMLElement },
   source: string,
-  multiline: boolean,
+  singleline: boolean,
 ): Patch | null {
   const range = getSelectedRange(event.currentTarget)
   switch (event.inputType) {
     case 'insertText': {
-      return createPatch(source, range, event.data || '')
+      return createPatch('insertText', source, range, event.data || '')
     }
     case 'deleteContentBackward': {
       return deleteContentBackward(source, range)
@@ -307,19 +328,19 @@ function createPatchFromEvent(
       return deleteSoftLineForward(source, range)
     }
     case 'deleteByCut': {
-      return createPatch(source, range)
+      return createPatch('deleteByCut', source, range)
     }
     case 'insertReplacementText':
     case 'insertFromPaste': {
       let data = event.dataTransfer?.getData('text')
-      if (!multiline && data) {
+      if (singleline && data) {
         data = data.replaceAll('\n', ' ')
       }
-      return createPatch(source, range, data)
+      return createPatch(event.inputType, source, range, data)
     }
     case 'insertParagraph': {
-      if (!multiline) return null
-      return createPatch(source, range, '\n')
+      if (singleline) return null
+      return createPatch('insertParagraph', source, range, '\n')
     }
     default:
       throw `Unsupported inputType: ${event.inputType}`
@@ -332,47 +353,94 @@ function createPatchFromEvent(
 /*                                                                                */
 /**********************************************************************************/
 
-export interface ContentEditableProps
-  extends Omit<ComponentProps<'div'>, 'onInput' | 'children' | 'contenteditable' | 'style'> {
-  children?: (source: string) => JSX.Element
+export interface ContentEditableProps<T extends string | never = never>
+  extends Omit<
+    ComponentProps<'div'>,
+    'children' | 'contenteditable' | 'onBeforeInput' | 'textContent' | 'onInput' | 'style'
+  > {
+  /**
+   * Render-prop receiving `textContent`, enabling the addition of visual markup to the `<ContentEditable/>` content.
+   *
+   * @warning
+   * - The content returned by this prop must maintain the original `textContent` as provided, ensuring that any added visual elements do not alter the functional text.
+   * - Deviating from the original `textContent` can lead to **undefined behavior**.
+   *
+   * [see README](https://www.github.com/bigmistqke/solid-contenteditable/#limitations-with-render-prop).
+   */
+  children?(textContent: string): JSX.Element
+  /** If contentEditable is editable or not. Defaults to `true`. */
   editable?: boolean
-  multiline?: boolean
-  onPatch?: (event: KeyboardEvent & { currentTarget: HTMLElement }) => Patch | null
-  onValue?: (value: string) => void
+  /**
+   * Callback deciding if history entries should be concatenated when undoing/redoing history.
+   *
+   * [see README](https://www.github.com/bigmistqke/solid-contenteditable/#history-heuristic).
+   */
+  historyHeuristic?(currentPatch: Patch<T>, nextPatch: Patch<T>): boolean
+  /** Optionally return a custom patch on each `onKeyDown`. */
+  onPatch?(event: KeyboardEvent & { currentTarget: HTMLElement }): Patch<T> | null
+  /** Event-callback called whenever `content` is updated */
+  onTextContent?: (value: string) => void
+  /** If `<ContentEditable/>` accepts only singleline input.  Defaults to `false`. */
+  singleline?: boolean
   style?: JSX.CSSProperties
-  value: string
+  /** The `textContent` of `<ContentEditable/>`. */
+  textContent: string
 }
 
-export function ContentEditable(props: ContentEditableProps) {
+export function ContentEditable<T extends string = never>(props: ContentEditableProps<T>) {
   const [config, rest] = splitProps(
-    mergeProps({ spellcheck: false, editable: true, multiline: true }, props),
-    ['children', 'editable', 'multiline', 'onPatch', 'onValue', 'style', 'value'],
+    mergeProps(
+      {
+        spellcheck: false,
+        editable: true,
+        singleline: false,
+        historyHeuristic(currentPatch: Patch<T>, nextPatch: Patch<T>) {
+          return !(
+            currentPatch.kind !== 'insertText' ||
+            nextPatch.kind !== 'insertText' ||
+            // Concatenate whitespaces or non-whitespaces
+            (currentPatch.data === ' ') !== (nextPatch.data === ' ')
+          )
+        },
+      },
+      props,
+    ),
+    [
+      'children',
+      'editable',
+      'historyHeuristic',
+      'onTextContent',
+      'onPatch',
+      'singleline',
+      'style',
+      'textContent',
+    ],
   )
-  const [value, setValue] = createWritable(() => props.value)
+  const [textContent, setTextContent] = createWritable(() => props.textContent)
   // Add an additional newline if the value ends with a newline,
-  // otherwise the browser will remove that trailing newline
-  const valueWithTrailingNewLine = createMemo(() =>
-    value().endsWith('\n') ? `${value()}\n` : value(),
+  // otherwise the browser will not display the trailing newline.
+  const textContentWithTrailingNewLine = createMemo(() =>
+    textContent().endsWith('\n') ? `${textContent()}\n` : textContent(),
   )
   const c = children(
-    () => props.children?.(valueWithTrailingNewLine()) || valueWithTrailingNewLine(),
+    () => props.children?.(textContentWithTrailingNewLine()) || textContentWithTrailingNewLine(),
   )
-  const history = createHistory()
+  const history = createHistory<T>()
   let element: HTMLDivElement = null!
 
-  function applyPatch(patch: Patch) {
-    history.push(patch)
+  function applyPatch(patch: Patch<T>) {
+    history.past.push(patch)
 
     const {
       range: { start, end },
       data = '',
     } = patch
 
-    const newValue = `${value().slice(0, start)}${data}${value().slice(end)}`
+    const newValue = `${textContent().slice(0, start)}${data}${textContent().slice(end)}`
 
-    setValue(newValue)
+    setTextContent(newValue)
 
-    props.onValue?.(newValue)
+    props.onTextContent?.(newValue)
   }
 
   function select(start: number, end?: number) {
@@ -398,44 +466,56 @@ export function ContentEditable(props: ContentEditableProps) {
 
     switch (event.inputType) {
       case 'historyUndo': {
-        const patch = history.pop()
+        while (true) {
+          const patch = history.past.pop()
 
-        if (!patch) return
+          if (!patch) return
 
-        const {
-          range: { start, end },
-          data = '',
-          undo = '',
-        } = patch
+          const {
+            range: { start },
+            data = '',
+            undo = '',
+          } = patch
 
-        setValue(value => `${value.slice(0, start)}${undo}${value.slice(start + data.length)}`)
+          setTextContent(
+            value => `${value.slice(0, start)}${undo}${value.slice(start + data.length)}`,
+          )
 
-        select(start, end)
+          select(patch.range.start, patch.range.end)
 
-        props.onValue?.(value())
+          props.onTextContent?.(textContent())
 
-        break
+          const nextPatch = history.past.peek()
+          if (!nextPatch) return
+
+          if (!config.historyHeuristic(patch, nextPatch)) return
+        }
       }
       case 'historyRedo': {
-        const patch = history.future.pop()
+        while (true) {
+          const patch = history.future.pop()
 
-        if (!patch) return
+          if (!patch) return
 
-        applyPatch(patch)
-        const {
-          range: { start },
-          data = '',
-        } = patch
+          applyPatch(patch)
+          const {
+            range: { start },
+            data = '',
+          } = patch
 
-        select(start + data.length)
+          select(start + data.length)
 
-        break
+          const nextPatch = history.future.peek()
+          if (!nextPatch) return
+
+          if (!config.historyHeuristic(patch, nextPatch)) return
+        }
       }
       default: {
-        history.clearFuture()
+        history.future.clear()
 
         const source = event.currentTarget.innerText
-        const patch = createPatchFromEvent(event, source, config.multiline)
+        const patch = createPatchFromEvent(event, source, config.singleline)
 
         if (patch) {
           applyPatch(patch)
@@ -447,7 +527,6 @@ export function ContentEditable(props: ContentEditableProps) {
 
           select(start + data.length)
         }
-
         break
       }
     }
@@ -494,13 +573,13 @@ export function ContentEditable(props: ContentEditableProps) {
       c
         .toArray()
         .map(value => (value instanceof Element ? value.textContent : value))
-        .join('') !== valueWithTrailingNewLine()
+        .join('') !== textContentWithTrailingNewLine()
     ) {
       console.warn(
         `⚠️ WARNING ⚠️
-- props.value and the textContent of props.children should be equal!
-- This will break <ContentEditable/>!
-- see www.github.com/bigmistqke/solid-contenteditable/#gotcha`,
+- props.textContent and the textContent of props.children(textContent) are not equal!
+- This breaks core-assumptions of <ContentEditable/> and will cause undefined behaviors!
+- see www.github.com/bigmistqke/solid-contenteditable/#limitations-with-render-prop`,
       )
     }
   })
@@ -509,7 +588,7 @@ export function ContentEditable(props: ContentEditableProps) {
     <div
       ref={element}
       role="textbox"
-      aria-multiline={config.multiline}
+      aria-multiline={!config.singleline}
       contenteditable={config.editable}
       onBeforeInput={onInput}
       onInput={onInput}
