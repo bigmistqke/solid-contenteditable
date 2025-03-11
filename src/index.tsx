@@ -86,7 +86,7 @@ export function getSelectedRange(element: HTMLElement): RangeVector {
 /*                                                                                */
 /**********************************************************************************/
 
-function getNodeAndOffsetAtIndex(element: HTMLElement, index: number) {
+function getNodeAndOffsetAtIndex(element: Node, index: number) {
   const nodes = element.childNodes
 
   let accumulator = 0
@@ -98,10 +98,14 @@ function getNodeAndOffsetAtIndex(element: HTMLElement, index: number) {
     accumulator += contentLength
 
     if (accumulator >= index) {
-      return {
-        node: node instanceof Text ? node : node.firstChild!,
-        offset: index - (accumulator - contentLength),
+      const offset = index - (accumulator - contentLength)
+      if (node instanceof Text) {
+        return {
+          node,
+          offset,
+        }
       }
+      return getNodeAndOffsetAtIndex(node, offset)
     }
   }
 
@@ -583,7 +587,6 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
         range: getSelectedRange(event.currentTarget),
         undo: '',
       })
-      return
     }
 
     if (isMac) {

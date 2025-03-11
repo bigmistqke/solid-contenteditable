@@ -1,4 +1,5 @@
 import { For, Show, type Accessor, type ComponentProps, type JSX } from 'solid-js'
+import { Dynamic } from 'solid-js/web'
 import { ContentEditable } from '../src'
 import './App.css'
 
@@ -37,6 +38,53 @@ function Button(props: Omit<ComponentProps<'span'>, 'style'> & { style?: JSX.CSS
         color: 'black',
         ...props.style,
       }}
+    />
+  )
+}
+
+function SimpleMarkDownEditor() {
+  function LinkHighlighter(props: { value: string }) {
+    return (
+      <Split value={props.value} delimiter={' '}>
+        {word => {
+          const [, content, link] = word.match(/\[([^\]]+)\]\(([^)]+)\)/) || []
+          if (content && link) {
+            return (
+              <>
+                [{content}](
+                <a href={link} target="__blank">
+                  {link}
+                </a>
+                )
+              </>
+            )
+          }
+          return word
+        }}
+      </Split>
+    )
+  }
+
+  return (
+    <ContentEditable
+      textContent={'#Title\n##SubTitle'}
+      class="contentEditable"
+      render={value => (
+        <Split value={value} delimiter={'\n'}>
+          {line => {
+            if (line.startsWith('#')) {
+              const [, hashes, content] = line.match(/^(\#{1,6})(.*)$/)!
+              return (
+                <Dynamic component={`h${hashes!.length}`} style={{ display: 'inline' }}>
+                  <span style={{ opacity: 0.3 }}>{hashes}</span>
+                  <LinkHighlighter value={content!} />
+                </Dynamic>
+              )
+            }
+            return <LinkHighlighter value={line} />
+          }}
+        </Split>
+      )}
     />
   )
 }
@@ -89,11 +137,15 @@ export function App() {
           }}
         />
         <h3>
-          solid-contenteditable: <i>render-prop</i>
+          solid-contenteditable: <i>render-prop (simple markdown-editor)</i>
+        </h3>
+        <SimpleMarkDownEditor />
+        <h3>
+          solid-contenteditable: <i>render-prop (highlight-editor)</i>
         </h3>
         <HashTagHighlighter />
         <h3>
-          solid-contenteditable: <i>render-prop and singleline</i>
+          solid-contenteditable: <i>render-prop (highlight-editor) and singleline</i>
         </h3>
         <HashTagHighlighter singleline />
         <h3>
