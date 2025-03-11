@@ -41,27 +41,26 @@ function Button(props: Omit<ComponentProps<'span'>, 'style'> & { style?: JSX.CSS
   )
 }
 
-function Mentions(props: { singleline?: boolean }) {
+function HashTagHighlighter(props: { singleline?: boolean }) {
   return (
     <ContentEditable
       textContent="     #hallo    #test"
       class="contentEditable"
       singleline={props.singleline}
-    >
-      {value => (
+      render={value => (
         <Split value={value} delimiter={'\n'}>
           {line => (
             <Split value={line} delimiter={' '}>
               {word => (
                 <Show when={word.startsWith('#')} fallback={word}>
-                  <Button onClick={() => console.log('ok')}>{word}</Button>
+                  <Button onClick={() => console.log('clicked hashtag')}>{word}</Button>
                 </Show>
               )}
             </Split>
           )}
         </Split>
       )}
-    </ContentEditable>
+    />
   )
 }
 
@@ -77,12 +76,12 @@ export function App() {
         </h3>
         <ContentEditable singleline textContent="     #hallo    #test" class="contentEditable" />
         <h3>
-          solid-contenteditable: <i>custom history-heuristic</i>
+          solid-contenteditable: <i>custom history-strategy</i>
         </h3>
         <ContentEditable
           textContent="     #hallo    #test"
           class="contentEditable"
-          historyHeuristic={(currentPatch, nextPatch) => {
+          historyStrategy={(currentPatch, nextPatch) => {
             return (
               (currentPatch.kind === 'insertText' || currentPatch.kind === 'insertParagraph') &&
               (nextPatch.kind === 'insertText' || nextPatch.kind === 'insertParagraph')
@@ -92,11 +91,11 @@ export function App() {
         <h3>
           solid-contenteditable: <i>render-prop</i>
         </h3>
-        <Mentions />
+        <HashTagHighlighter />
         <h3>
           solid-contenteditable: <i>render-prop and singleline</i>
         </h3>
-        <Mentions singleline />
+        <HashTagHighlighter singleline />
         <h3>
           default browser: <i>contenteditable</i>
         </h3>

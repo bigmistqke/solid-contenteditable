@@ -28,7 +28,7 @@ pnpm add @bigmistqke/solid-contenteditable
 
 - `children`: A function that receives `textContent` and returns `JSX.Element`. This render-prop allows for adding markup around the textContent, but must keep the resulting [textContent](https://developer.mozilla.org/en-US/docs/Web/API/Node/textContent) unchanged. ([more info](#limitations-with-render-prop))
 - `editable`: A boolean that controls whether the content is editable. Defaults to `true`.
-- `historyHeuristic`: A function that determines whether two consecutive history entries should be merged. ([more info](#history-heuristic))
+- `historyStrategy`: A function that determines whether two consecutive history entries should be merged. ([more info](#history-strategy))
 - `onPatch`: A function that can return a (custom) patch based on a keyboard event. Return `Patch` or `null`.
 - `onTextContent`: A callback that is triggered whenever the text-content is updated.
 - `singleline`: A boolean that indicates whether the component should accept only single-line input. When set to `true`, pasted newlines are replaced with spaces, and pressing the space key will be ignored. Defaults to `false`.
@@ -77,13 +77,13 @@ function HashTagHighlighter() {
 }
 ```
 
-### History Heuristic
+### History Strategy
 
-`historyHeuristic` is a function that determines whether two consecutive history entries (patches) should be merged during undo/redo operations. This feature allows for customizing the behavior of the history stack based on the nature of the changes.
+`historyStrategy` is a function that determines whether two consecutive history entries (patches) should be merged during undo/redo operations. This feature allows for customizing the behavior of the history stack based on the nature of the changes.
 
-#### Default Heuristic
+#### Default Strategy
 
-The default `historyHeuristic` implementation in `<ContentEditable/>` behaves as follows:
+The default `historyStrategy` implementation in `<ContentEditable/>` behaves as follows:
 
 - It only merges consecutive text insertions (`insertText`).
 - It will concatenate patches when they both involve adding either whitespace or non-whitespace characters.
@@ -104,14 +104,14 @@ The default `historyHeuristic` implementation in `<ContentEditable/>` behaves as
 
 </details>
 
-#### Custom Heuristic Example
+#### Custom Strategy Example
 
-This custom heuristic mirrors the behavior typically seen in default browser `<input/>` and `<textarea/>`, where subsequent text insertions and new paragraphs are merged automatically.
+This custom strategy mirrors the behavior typically seen in default browser `<input/>` and `<textarea/>`, where subsequent text insertions and new paragraphs are merged automatically.
 
 ```tsx
 <ContentEditable
   textContent="Start typing here..."
-  historyHeuristic={(currentPatch, nextPatch) => {
+  historyStrategy={(currentPatch, nextPatch) => {
     return (
       (currentPatch.kind === 'insertText' || currentPatch.kind === 'insertParagraph') &&
       (nextPatch.kind === 'insertText' || nextPatch.kind === 'insertParagraph')

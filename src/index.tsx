@@ -358,6 +358,18 @@ export interface ContentEditableProps<T extends string | never = never>
     ComponentProps<'div'>,
     'children' | 'contenteditable' | 'onBeforeInput' | 'textContent' | 'onInput' | 'style'
   > {
+  /** If contentEditable is editable or not. Defaults to `true`. */
+  editable?: boolean
+  /**
+   * Callback deciding if history entries should be concatenated when undoing/redoing history.
+   *
+   * [see README](https://www.github.com/bigmistqke/solid-contenteditable/#history-strategy).
+   */
+  historyStrategy?(currentPatch: Patch<T>, nextPatch: Patch<T>): boolean
+  /** Optionally return a custom patch on each `onKeyDown`. */
+  onPatch?(event: KeyboardEvent & { currentTarget: HTMLElement }): Patch<T> | null
+  /** Event-callback called whenever `content` is updated */
+  onTextContent?: (value: string) => void
   /**
    * Render-prop receiving `textContent`, enabling the addition of visual markup to the `<ContentEditable/>` content.
    *
@@ -367,19 +379,7 @@ export interface ContentEditableProps<T extends string | never = never>
    *
    * [see README](https://www.github.com/bigmistqke/solid-contenteditable/#limitations-with-render-prop).
    */
-  children?(textContent: string): JSX.Element
-  /** If contentEditable is editable or not. Defaults to `true`. */
-  editable?: boolean
-  /**
-   * Callback deciding if history entries should be concatenated when undoing/redoing history.
-   *
-   * [see README](https://www.github.com/bigmistqke/solid-contenteditable/#history-heuristic).
-   */
-  historyHeuristic?(currentPatch: Patch<T>, nextPatch: Patch<T>): boolean
-  /** Optionally return a custom patch on each `onKeyDown`. */
-  onPatch?(event: KeyboardEvent & { currentTarget: HTMLElement }): Patch<T> | null
-  /** Event-callback called whenever `content` is updated */
-  onTextContent?: (value: string) => void
+  render?(textContent: string): JSX.Element
   /** If `<ContentEditable/>` accepts only singleline input.  Defaults to `false`. */
   singleline?: boolean
   style?: JSX.CSSProperties
@@ -394,27 +394,27 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
         spellcheck: false,
         editable: true,
         singleline: false,
-        historyHeuristic(currentPatch: Patch<T>, nextPatch: Patch<T>) {
-          return !(
-            currentPatch.kind !== 'insertText' ||
-            nextPatch.kind !== 'insertText' ||
-            // Concatenate whitespaces or non-whitespaces
-            (currentPatch.data === ' ') !== (nextPatch.data === ' ')
-          )
+        historyStrategy(currentPatch: Patch<T>, nextPatch: Patch<T>) {
+          return !(currentPatch.kind !== 'insertText' ||
+          nextPatch.kind !== 'insertText' ||
+          // Concatenate whitespaces or non-whitespaces
+          currentPatch.data === ' '
+            ? currentPatch.data === ' ' && nextPatch.data !== ' '
+            : currentPatch.data !== ' ' && nextPatch.data === ' ')
         },
-      },
+      } satisfies Partial<ContentEditableProps>,
       props,
     ),
     [
-      'children',
+      'render',
       'editable',
-      'historyHeuristic',
+      'historyStrategy',
       'onTextContent',
       'onPatch',
       'singleline',
       'style',
       'textContent',
-    ],
+    ] satisfies Array<keyof Partial<ContentEditableProps>>,
   )
   const [textContent, setTextContent] = createWritable(() => props.textContent)
   // Add an additional newline if the value ends with a newline,
@@ -423,7 +423,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
     textContent().endsWith('\n') ? `${textContent()}\n` : textContent(),
   )
   const c = children(
-    () => props.children?.(textContentWithTrailingNewLine()) || textContentWithTrailingNewLine(),
+    () => props.render?.(textContentWithTrailingNewLine()) || textContentWithTrailingNewLine(),
   )
   const history = createHistory<T>()
   let element: HTMLDivElement = null!
@@ -488,7 +488,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
           const nextPatch = history.past.peek()
           if (!nextPatch) return
 
-          if (!config.historyHeuristic(patch, nextPatch)) return
+          if (!config.historyStrategy(patch, nextPatch)) return
         }
       }
       case 'historyRedo': {
@@ -508,7 +508,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
           const nextPatch = history.future.peek()
           if (!nextPatch) return
 
-          if (!config.historyHeuristic(patch, nextPatch)) return
+          if (!config.historyStrategy(patch, nextPatch)) return
         }
       }
       default: {
