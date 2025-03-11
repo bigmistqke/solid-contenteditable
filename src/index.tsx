@@ -12,14 +12,9 @@ import {
 type RangeVector = { start: number; end: number }
 
 export type Patch = {
-  action: {
-    range: RangeVector
-    data?: string
-  }
-  undo?: {
-    data: string
-    range?: RangeVector
-  }
+  data?: string
+  range: RangeVector
+  undo: string
 }
 
 /**********************************************************************************/
@@ -105,12 +100,15 @@ function getNodeAndOffsetAtIndex(element: HTMLElement, index: number) {
 function createHistory() {
   const [past, setPast] = createSignal<Patch[]>([])
   const [future, setFuture] = createSignal<Patch[]>([])
+
   function clearFuture() {
     setFuture(future => (future.length > 0 ? [] : future))
   }
+
   function push(patch: Patch) {
     setPast(patches => [...patches, patch])
   }
+
   function pop() {
     const patch = past().pop()
     if (patch) {
@@ -118,6 +116,7 @@ function createHistory() {
     }
     return patch
   }
+
   return {
     get past() {
       return past()
@@ -137,44 +136,30 @@ function createHistory() {
 /*                                                                                */
 /**********************************************************************************/
 
+function createPatch(source: string, range: RangeVector, data?: string): Patch {
+  return {
+    range,
+    data,
+    undo: source.slice(range.start, range.end),
+  }
+}
+
 function deleteContentForward(source: string, range: RangeVector): Patch {
   const end = range.start === range.end ? Math.min(source.length - 1, range.end + 1) : range.end
 
-  return {
-    action: {
-      range: {
-        start: range.start,
-        end,
-      },
-    },
-    undo: {
-      data: source.slice(range.start, end),
-      range: {
-        start: range.start,
-        end,
-      },
-    },
-  }
+  return createPatch(source, {
+    start: range.start,
+    end,
+  })
 }
 
 function deleteContentBackward(source: string, range: RangeVector): Patch {
   const start = range.start === range.end ? Math.max(0, range.start - 1) : range.start
 
-  return {
-    action: {
-      range: {
-        start,
-        end: range.end,
-      },
-    },
-    undo: {
-      data: source.slice(start, range.end),
-      range: {
-        start,
-        end: range.end,
-      },
-    },
-  }
+  return createPatch(source, {
+    start,
+    end: range.end,
+  })
 }
 
 function deleteWordBackward(source: string, range: RangeVector): Patch {
@@ -202,21 +187,10 @@ function deleteWordBackward(source: string, range: RangeVector): Patch {
     }
   }
 
-  return {
-    action: {
-      range: {
-        start,
-        end: range.end,
-      },
-    },
-    undo: {
-      data: source.slice(start, range.end),
-      range: {
-        start,
-        end: range.end,
-      },
-    },
-  }
+  return createPatch(source, {
+    start,
+    end: range.end,
+  })
 }
 
 function deleteWordForward(source: string, range: RangeVector): Patch {
@@ -232,33 +206,22 @@ function deleteWordForward(source: string, range: RangeVector): Patch {
   // If the previous value is alphanumeric,
   // we delete all previous alphanumeric values
   if (isAlphanumeric(source[end])) {
-    while (end > 0 && isAlphanumeric(source[end])) {
+    while (end < source.length && isAlphanumeric(source[end])) {
       end += 1
     }
   } else {
     // If the previous value is not alphanumeric,
     // we delete all previous non-alphanumeric values
     // until the next whitespace or alphanumeric
-    while (end < source.length - 1 && !isWhiteSpace(source[end]) && !isAlphanumeric(source[end])) {
+    while (end < source.length && !isWhiteSpace(source[end]) && !isAlphanumeric(source[end])) {
       end += 1
     }
   }
 
-  return {
-    action: {
-      range: {
-        start: range.start,
-        end,
-      },
-    },
-    undo: {
-      data: source.slice(range.start, end),
-      range: {
-        start: range.start,
-        end,
-      },
-    },
-  }
+  return createPatch(source, {
+    start: range.start,
+    end,
+  })
 }
 
 function deleteSoftLineBackward(source: string, range: RangeVector): Patch {
@@ -272,21 +235,10 @@ function deleteSoftLineBackward(source: string, range: RangeVector): Patch {
     }
   }
 
-  return {
-    action: {
-      range: {
-        start,
-        end: range.end,
-      },
-    },
-    undo: {
-      data: source.slice(start, range.end),
-      range: {
-        start,
-        end: range.end,
-      },
-    },
-  }
+  return createPatch(source, {
+    start,
+    end: range.end,
+  })
 }
 
 function deleteSoftLineForward(source: string, range: RangeVector): Patch {
@@ -295,27 +247,15 @@ function deleteSoftLineForward(source: string, range: RangeVector): Patch {
   if (isNewLine(source[end + 1])) {
     end += 1
   } else {
-    while (end > 0 && !isNewLine(source[end + 1])) {
+    while (end < source.length && !isNewLine(source[end + 1])) {
       end += 1
     }
   }
 
-  return {
-    action: {
-      range: {
-        start: range.start,
-        end,
-      },
-      data: '\n',
-    },
-    undo: {
-      data: source.slice(range.start, end),
-      range: {
-        start: range.start,
-        end,
-      },
-    },
-  }
+  return createPatch(source, {
+    start: range.start,
+    end,
+  })
 }
 
 /**********************************************************************************/
@@ -324,24 +264,14 @@ function deleteSoftLineForward(source: string, range: RangeVector): Patch {
 /*                                                                                */
 /**********************************************************************************/
 
-function createDefaultUndo(source: string, range: RangeVector) {
-  return {
-    data: source.slice(range.start, range.end),
-    range,
-  }
-}
-
-function createPatch(event: InputEvent & { currentTarget: HTMLElement }, source: string): Patch {
+function createPatchFromEvent(
+  event: InputEvent & { currentTarget: HTMLElement },
+  source: string,
+): Patch {
   const range = getSelectedRange(event.currentTarget)
   switch (event.inputType) {
     case 'insertText': {
-      return {
-        action: {
-          range,
-          data: event.data || '',
-        },
-        undo: createDefaultUndo(source, range),
-      }
+      return createPatch(source, range, event.data || '')
     }
     case 'deleteContentBackward': {
       return deleteContentBackward(source, range)
@@ -374,31 +304,14 @@ function createPatch(event: InputEvent & { currentTarget: HTMLElement }, source:
       return deleteSoftLineForward(source, range)
     }
     case 'deleteByCut': {
-      return {
-        action: {
-          range,
-        },
-        undo: createDefaultUndo(source, range),
-      }
+      return createPatch(source, range)
     }
     case 'insertReplacementText':
     case 'insertFromPaste': {
-      return {
-        action: {
-          range,
-          data: event.dataTransfer?.getData('text'),
-        },
-        undo: createDefaultUndo(source, range),
-      }
+      return createPatch(source, range, event.dataTransfer?.getData('text'))
     }
     case 'insertParagraph': {
-      return {
-        action: {
-          range,
-          data: '\n',
-        },
-        undo: createDefaultUndo(source, range),
-      }
+      return createPatch(source, range, '\n')
     }
     default:
       throw `Unsupported inputType: ${event.inputType}`
@@ -446,13 +359,11 @@ export function ContentEditable(props: ContentEditableProps) {
     history.push(patch)
 
     const {
-      action: {
-        range: { start, end },
-        data,
-      },
+      range: { start, end },
+      data = '',
     } = patch
 
-    const newValue = `${value().slice(0, start)}${data || ''}${value().slice(end)}`
+    const newValue = `${value().slice(0, start)}${data}${value().slice(end)}`
 
     setValue(newValue)
 
@@ -487,22 +398,14 @@ export function ContentEditable(props: ContentEditableProps) {
         if (!patch) return
 
         const {
-          action: {
-            range: { start, end },
-            data = '',
-          },
-          undo,
+          range: { start, end },
+          data = '',
+          undo = '',
         } = patch
 
-        setValue(
-          value => `${value.slice(0, start)}${undo?.data || ''}${value.slice(start + data.length)}`,
-        )
+        setValue(value => `${value.slice(0, start)}${undo}${value.slice(start + data.length)}`)
 
-        if (undo?.range) {
-          select(undo.range.start, undo.range.end)
-        } else {
-          select(start + (undo?.data?.length || 0))
-        }
+        select(start, end)
 
         props.onValue?.(value())
 
@@ -515,41 +418,26 @@ export function ContentEditable(props: ContentEditableProps) {
 
         applyPatch(patch)
         const {
-          action: {
-            range: { start },
-            data = '',
-            selection,
-          },
-          undo,
+          range: { start },
+          data = '',
         } = patch
 
-        if (selection) {
-          select(selection.start, selection.end)
-        } else {
-          select(start + data.length)
-        }
+        select(start + data.length)
         break
       }
       default: {
         history.clearFuture()
 
-        const text = event.currentTarget.innerText
-        const patch = createPatch(event, text)
+        const source = event.currentTarget.innerText
+        const patch = createPatchFromEvent(event, source)
         applyPatch(patch)
 
         const {
-          action: {
-            range: { start, end },
-            data = '',
-            selection,
-          },
+          range: { start },
+          data = '',
         } = patch
 
-        if (selection) {
-          select(selection.start, selection.end)
-        } else {
-          select(start + data.length)
-        }
+        select(start + data.length)
         break
       }
     }
@@ -560,12 +448,6 @@ export function ContentEditable(props: ContentEditableProps) {
       const patch = config.onPatch(event)
       if (patch) {
         applyPatch(patch)
-        const {
-          action: { selection },
-        } = patch
-        if (selection) {
-          select(selection.start, selection.end)
-        }
       }
     }
     if (event.ctrlKey || event.metaKey) {
