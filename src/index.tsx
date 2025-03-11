@@ -172,6 +172,7 @@ function deleteWordBackward(source: string, range: RangeVector): Patch {
       start--
     }
   }
+
   // If the previous value is alphanumeric,
   // we delete all previous alphanumeric values
   if (isAlphanumeric(source[start - 1])) {
@@ -203,6 +204,7 @@ function deleteWordForward(source: string, range: RangeVector): Patch {
       end += 1
     }
   }
+
   // If the previous value is alphanumeric,
   // we delete all previous alphanumeric values
   if (isAlphanumeric(source[end])) {
@@ -260,14 +262,15 @@ function deleteSoftLineForward(source: string, range: RangeVector): Patch {
 
 /**********************************************************************************/
 /*                                                                                */
-/*                                  Create Patch                                  */
+/*                            Create Patch From Event                             */
 /*                                                                                */
 /**********************************************************************************/
 
 function createPatchFromEvent(
   event: InputEvent & { currentTarget: HTMLElement },
   source: string,
-): Patch {
+  multiline: boolean,
+): Patch | null {
   const range = getSelectedRange(event.currentTarget)
   switch (event.inputType) {
     case 'insertText': {
@@ -308,9 +311,14 @@ function createPatchFromEvent(
     }
     case 'insertReplacementText':
     case 'insertFromPaste': {
-      return createPatch(source, range, event.dataTransfer?.getData('text'))
+      let data = event.dataTransfer?.getData('text')
+      if (!multiline && data) {
+        data = data.replaceAll('\n', ' ')
+      }
+      return createPatch(source, range, data)
     }
     case 'insertParagraph': {
+      if (!multiline) return null
       return createPatch(source, range, '\n')
     }
     default:
@@ -328,6 +336,7 @@ export interface ContentEditableProps
   extends Omit<ComponentProps<'div'>, 'onInput' | 'children' | 'contenteditable' | 'style'> {
   children?: (source: string) => JSX.Element
   editable?: boolean
+  multiline?: boolean
   onPatch?: (event: KeyboardEvent & { currentTarget: HTMLElement }) => Patch | null
   onValue?: (value: string) => void
   style?: JSX.CSSProperties
@@ -335,14 +344,10 @@ export interface ContentEditableProps
 }
 
 export function ContentEditable(props: ContentEditableProps) {
-  const [config, rest] = splitProps(mergeProps({ spellcheck: false, editable: true }, props), [
-    'children',
-    'editable',
-    'onPatch',
-    'onValue',
-    'style',
-    'value',
-  ])
+  const [config, rest] = splitProps(
+    mergeProps({ spellcheck: false, editable: true, multiline: true }, props),
+    ['children', 'editable', 'multiline', 'onPatch', 'onValue', 'style', 'value'],
+  )
   const [value, setValue] = createWritable(() => props.value)
   // Add an additional newline if the value ends with a newline,
   // otherwise the browser will remove that trailing newline
@@ -423,21 +428,26 @@ export function ContentEditable(props: ContentEditableProps) {
         } = patch
 
         select(start + data.length)
+
         break
       }
       default: {
         history.clearFuture()
 
         const source = event.currentTarget.innerText
-        const patch = createPatchFromEvent(event, source)
-        applyPatch(patch)
+        const patch = createPatchFromEvent(event, source, config.multiline)
 
-        const {
-          range: { start },
-          data = '',
-        } = patch
+        if (patch) {
+          applyPatch(patch)
 
-        select(start + data.length)
+          const {
+            range: { start },
+            data = '',
+          } = patch
+
+          select(start + data.length)
+        }
+
         break
       }
     }
@@ -498,6 +508,8 @@ export function ContentEditable(props: ContentEditableProps) {
   return (
     <div
       ref={element}
+      role="textbox"
+      aria-multiline={config.multiline}
       contenteditable={config.editable}
       onBeforeInput={onInput}
       onInput={onInput}
