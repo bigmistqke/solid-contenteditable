@@ -593,7 +593,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       }
     }
 
-    if (event.key.startsWith('Arrow')) {
+    if (event.key.startsWith('Arrow') || event.key === 'Home' || event.key === 'End') {
       history.past.push({
         kind: 'caret',
         range: getSelectedRange(event.currentTarget),
