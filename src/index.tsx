@@ -495,6 +495,17 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
     }
 
     selection.addRange(range)
+
+    if (props.singleline) {
+      const rect = range.getBoundingClientRect()
+      const elementRect = element.getBoundingClientRect()
+
+      if (rect.left < elementRect.left) {
+        element.scrollLeft += rect.left - elementRect.left
+      } else if (rect.right > elementRect.right) {
+        element.scrollLeft += rect.right - elementRect.right
+      }
+    }
   }
 
   function onInput(event: InputEvent & { currentTarget: HTMLDivElement }) {
