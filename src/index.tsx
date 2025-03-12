@@ -641,7 +641,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       onBeforeInput={onInput}
       onInput={onInput}
       onKeyDown={onKeyDown}
-      style={{ 'white-space': 'pre-wrap', ...config.style }}
+      style={{ 'white-space': 'break-spaces', ...config.style }}
       {...rest}
     >
       {c()}
