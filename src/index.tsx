@@ -654,6 +654,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       onKeyDown={onKeyDown}
       style={{
         'scrollbar-width': props.singleline ? 'none' : undefined,
+        'overflow-x': props.singleline ? 'auto' : undefined,
         'white-space': props.singleline ? 'pre' : 'break-spaces',
         ...config.style,
       }}
