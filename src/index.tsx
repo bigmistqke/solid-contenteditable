@@ -652,7 +652,11 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       onBeforeInput={onInput}
       onInput={onInput}
       onKeyDown={onKeyDown}
-      style={{ 'white-space': props.singleline ? 'pre' : 'break-spaces', ...config.style }}
+      style={{
+        'scrollbar-width': props.singleline ? 'none' : undefined,
+        'white-space': props.singleline ? 'pre' : 'break-spaces',
+        ...config.style,
+      }}
       {...rest}
     >
       {c()}
