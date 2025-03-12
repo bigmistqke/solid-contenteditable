@@ -5,6 +5,7 @@ import {
   createSignal,
   mergeProps,
   splitProps,
+  type Accessor,
   type ComponentProps,
   type JSX,
 } from 'solid-js'
@@ -415,7 +416,7 @@ export interface ContentEditableProps<T extends string | never = never>
    *
    * [see README](https://www.github.com/bigmistqke/solid-contenteditable/#limitations-with-render-prop).
    */
-  render?(textContent: string): JSX.Element
+  render?(textContent: Accessor<string>): JSX.Element
   /** If `<ContentEditable/>` accepts only singleline input.  Defaults to `false`. */
   singleline?: boolean
   style?: JSX.CSSProperties
@@ -458,7 +459,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
     textContent().endsWith('\n') ? `${textContent()}\n` : textContent(),
   )
   const c = children(
-    () => props.render?.(textContentWithTrailingNewLine()) || textContentWithTrailingNewLine(),
+    () => props.render?.(textContentWithTrailingNewLine) || textContentWithTrailingNewLine(),
   )
   const history = createHistory<T>()
   let element: HTMLDivElement = null!

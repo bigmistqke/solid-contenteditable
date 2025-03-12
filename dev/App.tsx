@@ -43,7 +43,7 @@ function Button(props: Omit<ComponentProps<'span'>, 'style'> & { style?: JSX.CSS
 }
 
 function SimpleMarkDownEditor() {
-  function LinkHighlighter(props: { value: string }) {
+  function WordHighlighter(props: { value: string }) {
     return (
       <Split value={props.value} delimiter={' '}>
         {word => {
@@ -59,6 +59,7 @@ function SimpleMarkDownEditor() {
               </>
             )
           }
+
           return word
         }}
       </Split>
@@ -70,18 +71,18 @@ function SimpleMarkDownEditor() {
       textContent={'#Title\n##SubTitle'}
       class="contentEditable"
       render={value => (
-        <Split value={value} delimiter={'\n'}>
+        <Split value={value()} delimiter={'\n'}>
           {line => {
             if (line.startsWith('#')) {
               const [, hashes, content] = line.match(/^(\#{1,6})(.*)$/)!
               return (
                 <Dynamic component={`h${hashes!.length}`} style={{ display: 'inline' }}>
                   <span style={{ opacity: 0.3 }}>{hashes}</span>
-                  <LinkHighlighter value={content!} />
+                  <WordHighlighter value={content!} />
                 </Dynamic>
               )
             }
-            return <LinkHighlighter value={line} />
+            return <WordHighlighter value={line} />
           }}
         </Split>
       )}
@@ -96,7 +97,7 @@ function HashTagHighlighter(props: { singleline?: boolean }) {
       class="contentEditable"
       singleline={props.singleline}
       render={value => (
-        <Split value={value} delimiter={'\n'}>
+        <Split value={value()} delimiter={'\n'}>
           {line => (
             <Split value={line} delimiter={' '}>
               {word => (

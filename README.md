@@ -30,9 +30,29 @@ pnpm add @bigmistqke/solid-contenteditable
 - `historyStrategy`: A function that determines whether two consecutive history entries should be merged. ([more info](#history-strategy))
 - `onPatch`: A function that can return a (custom) patch based on a keyboard event. Return `Patch` or `null`.
 - `onTextContent`: A callback that is triggered whenever the text-content is updated.
-- `render`: A function that receives `textContent` and returns `JSX.Element`. This render-prop allows for adding markup around the textContent, but must keep the resulting [textContent](https://developer.mozilla.org/en-US/docs/Web/API/Node/textContent) unchanged. ([more info](#limitations-with-render-prop))
+- `render`: A function that receives an accessor to `textContent` and returns `JSX.Element`. This render-prop allows for adding markup around the textContent, but must keep the resulting [textContent](https://developer.mozilla.org/en-US/docs/Web/API/Node/textContent) unchanged. ([more info](#limitations-with-render-prop))
 - `singleline`: A boolean that indicates whether the component should accept only single-line input. When set to `true`, pasted newlines are replaced with spaces, and pressing the space key will be ignored. Defaults to `false`.
 - `textContent`: The text-content of the component.
+
+<details>
+  <summary>Types</summary>
+
+```tsx
+interface ContentEditableProps<T extends string | never = never>
+  extends Omit<
+    ComponentProps<'div'>,
+    'children' | 'contenteditable' | 'onBeforeInput' | 'textContent' | 'onInput' | 'style'
+  > {
+  editable?: boolean
+  historyStrategy?(currentPatch: Patch<T>, nextPatch: Patch<T>): boolean
+  onPatch?(event: KeyboardEvent & { currentTarget: HTMLElement }): Patch<T> | null
+  onTextContent?: (value: string) => void
+  render?(textContent: Accessor<string>): JSX.Element
+  singleline?: boolean
+  style?: JSX.CSSProperties
+  textContent: string
+}
+```
 
 ## Simple Example
 
@@ -64,7 +84,7 @@ function HashTagHighlighter() {
       onTextContent={setText}
       singleline
       render={textContent => (
-        <For each={textContent.split(' ')}>
+        <For each={textContent().split(' ')}>
           {(word, wordIndex) => (
             <>
               <Show when={word.startsWith('#')} fallback={word}>
