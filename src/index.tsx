@@ -61,7 +61,7 @@ function createWritable<T>(fn: () => T) {
 /*                                                                                */
 /**********************************************************************************/
 
-export function getSelectedRange(element: HTMLElement): RangeVector {
+function getSelectedRange(element: HTMLElement): RangeVector {
   const selection = document.getSelection()
 
   if (!selection || selection.rangeCount === 0) {
