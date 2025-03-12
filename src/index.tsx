@@ -630,6 +630,29 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
     }
   }
 
+  function onPointerDown() {
+    if (history.past.peek()?.kind === 'caret') return
+
+    const caretDown = getSelectedRange(element)
+    const controller = new AbortController()
+
+    window.addEventListener(
+      'pointerup',
+      () => {
+        const caretUp = getSelectedRange(element)
+        if (caretDown.start !== caretUp.start || caretDown.end !== caretUp.end) {
+          history.past.push({
+            kind: 'caret',
+            range: caretUp,
+            undo: '',
+          })
+        }
+        controller.abort()
+      },
+      { signal: controller.signal },
+    )
+  }
+
   createEffect(() => {
     if (
       c
@@ -655,6 +678,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       onBeforeInput={onInput}
       onInput={onInput}
       onKeyDown={onKeyDown}
+      onPointerDown={onPointerDown}
       style={{
         'scrollbar-width': props.singleline ? 'none' : undefined,
         'overflow-x': props.singleline ? 'auto' : undefined,
