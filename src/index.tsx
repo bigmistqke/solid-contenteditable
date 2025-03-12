@@ -594,11 +594,14 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
     }
 
     if (event.key.startsWith('Arrow') || event.key === 'Home' || event.key === 'End') {
-      history.past.push({
-        kind: 'caret',
-        range: getSelectedRange(event.currentTarget),
-        undo: '',
-      })
+      if (history.past.peek()?.kind !== 'caret') {
+        history.past.push({
+          kind: 'caret',
+          range: getSelectedRange(element),
+          undo: '',
+        })
+      }
+      return
     }
 
     if (isMac) {
