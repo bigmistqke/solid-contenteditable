@@ -54,6 +54,8 @@ interface ContentEditableProps<T extends string | never = never>
 }
 ```
 
+</details>
+
 ## Simple Example
 
 ```tsx
