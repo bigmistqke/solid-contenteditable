@@ -31,7 +31,7 @@ pnpm add @bigmistqke/solid-contenteditable
 - `onPatch`: A function that can return a (custom) patch based on a keyboard event. Return `Patch` or `null`.
 - `onTextContent`: A callback that is triggered whenever the text-content is updated.
 - `render`: A function that receives an accessor to `textContent` and returns `JSX.Element`. This render-prop allows for adding markup around the textContent, but must keep the resulting [textContent](https://developer.mozilla.org/en-US/docs/Web/API/Node/textContent) unchanged. ([more info](#limitations-with-render-prop))
-- `singleline`: A boolean that indicates whether the component should accept only single-line input. When set to `true`, pasted newlines are replaced with spaces, and pressing the space key will be ignored. Defaults to `false`.
+- `singleline`: A boolean that indicates whether the component should accept only single-line input. When set to `true`, pasted newlines are replaced with spaces, and pressing the return key will be ignored. Defaults to `false`.
 - `textContent`: The text-content of the component.
 
 <details>
