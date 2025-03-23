@@ -17,6 +17,7 @@ type RangeVector = { start: number; end: number }
 export type Patch<T = never> = {
   // see https://w3c.github.io/input-events/#interface-InputEvent-Attributes
   kind:
+    | 'insertLineBreak'
     | 'insertFromPaste'
     | 'insertParagraph'
     | 'insertReplacementText'
@@ -347,6 +348,7 @@ function createPatchFromEvent(
       }
       return createPatch(event.inputType, source, range, data)
     }
+    case 'insertLineBreak':
     case 'insertParagraph': {
       if (singleline) return null
       return createPatch('insertParagraph', source, range, '\n')
