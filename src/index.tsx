@@ -220,7 +220,7 @@ function createPatch(
 }
 
 function deleteContentForward(source: string, range: RangeVector): Patch {
-  const end = range.start === range.end ? Math.min(source.length - 1, range.end + 1) : range.end
+  const end = range.start === range.end ? Math.min(source.length, range.end + 1) : range.end
 
   return createPatch('deleteContentForward', source, {
     start: range.start,
