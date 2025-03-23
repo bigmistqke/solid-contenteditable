@@ -9,6 +9,7 @@ import {
   type ComponentProps,
   type JSX,
 } from 'solid-js'
+import { isDev } from 'solid-js/web'
 
 const isMac = navigator.platform.startsWith('Mac')
 
@@ -512,6 +513,10 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
 
   function onInput(event: InputEvent & { currentTarget: HTMLDivElement }) {
     event.preventDefault()
+
+    if (isDev) {
+      console.log(event.inputType)
+    }
 
     switch (event.inputType) {
       case 'historyUndo': {
