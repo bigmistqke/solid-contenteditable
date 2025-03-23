@@ -90,6 +90,25 @@ function SimpleMarkDownEditor() {
   )
 }
 
+function ContentEditableWithCustomKeyBinding() {
+  return (
+    <ContentEditable
+      textContent="     #hallo    #test"
+      class="contentEditable"
+      keyBindings={{
+        'Ctrl+Shift+S': ({ textContent, range }) => {
+          return {
+            kind: 'insertText',
+            data: '😊',
+            range,
+            undo: textContent.slice(range.start, range.end),
+          }
+        },
+      }}
+    />
+  )
+}
+
 function HashTagHighlighter(props: { singleline?: boolean }) {
   return (
     <ContentEditable
@@ -124,6 +143,10 @@ export function App() {
           solid-contenteditable: <i>singleline</i>
         </h3>
         <ContentEditable singleline textContent="     #hallo    #test" class="contentEditable" />
+        <h3>
+          solid-contenteditable: <i>custom key-binding (Ctrl+Shift+S for 😊)</i>
+        </h3>
+        <ContentEditableWithCustomKeyBinding />
         <h3>
           solid-contenteditable: <i>custom history-strategy</i>
         </h3>

@@ -59,6 +59,31 @@ function createWritable<T>(fn: () => T) {
 
 /**********************************************************************************/
 /*                                                                                */
+/*                                 Key Combo Utils                                */
+/*                                                                                */
+/**********************************************************************************/
+
+// Follow key-combination-order as described https://superuser.com/a/1238062
+const modifiers = ['Ctrl', 'Alt', 'Shift', 'Meta']
+function getKeyComboFromKeyboardEvent(event: KeyboardEvent) {
+  if (modifiers.includes(event.key)) return event.code
+  const ctrl = event.ctrlKey ? 'Ctrl+' : ''
+  const alt = event.altKey ? 'Alt+' : ''
+  const shift = event.shiftKey ? 'Shift+' : ''
+  const meta = event.metaKey ? 'Meta+' : ''
+  return ctrl + alt + shift + meta + event.code.replace('Key', '')
+}
+
+const reversedModifiers = modifiers.toReversed()
+function normalizeKeyCombo(keyCombo: string) {
+  return keyCombo
+    .split('+')
+    .sort((a, b) => reversedModifiers.indexOf(b) - reversedModifiers.indexOf(a))
+    .join('+')
+}
+
+/**********************************************************************************/
+/*                                                                                */
 /*                                Get Selected Range                              */
 /*                                                                                */
 /**********************************************************************************/
@@ -398,6 +423,22 @@ export interface ContentEditableProps<T extends string | never = never>
     ComponentProps<'div'>,
     'children' | 'contenteditable' | 'onBeforeInput' | 'textContent' | 'onInput' | 'style'
   > {
+  /**
+   * Add additional key-bindings.
+   * @warning
+   * The given key-bindings are normalized according to the following order:
+   * `CTRL - ALT - SHIFT - META - [key]`
+   *
+   * [see](https://superuser.com/a/1238062)
+   */
+  keyBindings?: Record<
+    string,
+    (data: {
+      textContent: string
+      range: RangeVector
+      event: KeyboardEvent & { currentTarget: HTMLElement }
+    }) => Patch<T> | null
+  >
   /** If contentEditable is editable or not. Defaults to `true`. */
   editable?: boolean
   /**
@@ -406,8 +447,6 @@ export interface ContentEditableProps<T extends string | never = never>
    * [see README](https://www.github.com/bigmistqke/solid-contenteditable/#history-strategy).
    */
   historyStrategy?(currentPatch: Patch<T>, nextPatch: Patch<T>): boolean
-  /** Optionally return a custom patch on each `onKeyDown`. */
-  onPatch?(event: KeyboardEvent & { currentTarget: HTMLElement }): Patch<T> | null
   /** Event-callback called whenever `content` is updated */
   onTextContent?: (value: string) => void
   /**
@@ -449,7 +488,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       'editable',
       'historyStrategy',
       'onTextContent',
-      'onPatch',
+      'keyBindings',
       'singleline',
       'style',
       'textContent',
@@ -464,6 +503,13 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
   const c = children(
     () => props.render?.(textContentWithTrailingNewLine) || textContentWithTrailingNewLine(),
   )
+  const normalizedKeyBindings = createMemo(() =>
+    Object.fromEntries(
+      Object.entries(config.keyBindings || {}).map(([key, value]) => {
+        return [normalizeKeyCombo(key), value]
+      }),
+    ),
+  )
   const history = createHistory<T>()
   let element: HTMLDivElement = null!
 
@@ -471,14 +517,13 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
     history.past.push(patch)
 
     const {
-      range: { start, end },
       data = '',
+      range: { start, end },
     } = patch
 
     const newValue = `${textContent().slice(0, start)}${data}${textContent().slice(end)}`
 
     setTextContent(newValue)
-
     props.onTextContent?.(newValue)
   }
 
@@ -515,7 +560,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
     event.preventDefault()
 
     if (isDev) {
-      console.log(event.inputType)
+      console.log('input-type:', event.inputType)
     }
 
     switch (event.inputType) {
@@ -525,20 +570,19 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
 
           if (!patch) return
 
-          const {
-            kind,
-            range: { start },
-            data = '',
-            undo = '',
-          } = patch
+          if (patch.kind === 'caret') continue
 
-          if (kind === 'caret') continue
+          const {
+            range: { start, end },
+            undo,
+            data = '',
+          } = patch
 
           setTextContent(
             value => `${value.slice(0, start)}${undo}${value.slice(start + data.length)}`,
           )
 
-          select(patch.range.start, patch.range.end)
+          select(start, end)
 
           props.onTextContent?.(textContent())
 
@@ -555,13 +599,13 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
           if (!patch) return
 
           applyPatch(patch)
+
+          if (patch.kind === 'caret') continue
+
           const {
-            kind,
             range: { start },
             data = '',
           } = patch
-
-          if (kind === 'caret') continue
 
           select(start + data.length)
 
@@ -572,31 +616,49 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
         }
       }
       default: {
-        history.future.clear()
-
-        const source = event.currentTarget.innerText
-        const patch = createPatchFromInputEvent(event, source, config.singleline)
+        const patch = createPatchFromInputEvent(event, textContent(), config.singleline)
 
         if (patch) {
+          history.future.clear()
           applyPatch(patch)
-
           const {
-            range: { start },
             data = '',
+            range: { start },
           } = patch
-
           select(start + data.length)
         }
+
         break
       }
     }
   }
 
   function onKeyDown(event: KeyboardEvent & { currentTarget: HTMLElement }) {
-    if (config.onPatch) {
-      const patch = config.onPatch(event)
-      if (patch) {
-        applyPatch(patch)
+    if (config.keyBindings) {
+      const keyCombo = getKeyComboFromKeyboardEvent(event)
+
+      if (isDev) {
+        console.log('key-combo:', keyCombo, normalizedKeyBindings())
+      }
+
+      if (keyCombo in normalizedKeyBindings()) {
+        const patch = normalizedKeyBindings()[keyCombo]!({
+          textContent: textContent(),
+          range: getSelectedRange(event.currentTarget),
+          event,
+        })
+
+        if (patch) {
+          event.preventDefault()
+          history.future.clear()
+          applyPatch(patch)
+          const {
+            data = '',
+            range: { start },
+          } = patch
+          select(start + (data.length ?? 0))
+          return
+        }
       }
     }
 
