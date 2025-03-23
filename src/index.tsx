@@ -142,7 +142,7 @@ function getNodeAndOffsetAtIndex(element: Node, index: number) {
 
 /**********************************************************************************/
 /*                                                                                */
-/*                                 Create History                                 */
+/*                                  History Utils                                 */
 /*                                                                                */
 /**********************************************************************************/
 
@@ -181,6 +181,22 @@ function createHistory<T extends string = never>() {
       },
     },
   }
+}
+
+function defaultHistoryStrategy(currentPatch: Patch, nextPatch: Patch) {
+  if (
+    (currentPatch.kind === 'deleteContentBackward' && nextPatch.kind === 'deleteContentForward') ||
+    (currentPatch.kind === 'deleteContentForward' && nextPatch.kind === 'deleteContentBackward')
+  ) {
+    return false
+  }
+
+  const relevantKinds = ['insertText', 'deleteContentBackward', 'deleteContentForward']
+  return (
+    relevantKinds.includes(currentPatch.kind) &&
+    relevantKinds.includes(nextPatch.kind) &&
+    !(currentPatch.data === ' ' && nextPatch.data !== ' ')
+  )
 }
 
 /**********************************************************************************/
@@ -473,13 +489,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
         spellcheck: false,
         editable: true,
         singleline: false,
-        historyStrategy(currentPatch: Patch<T>, nextPatch: Patch<T>) {
-          return !(
-            currentPatch.kind !== 'insertText' ||
-            nextPatch.kind !== 'insertText' ||
-            (currentPatch.data === ' ' && nextPatch.data !== ' ')
-          )
-        },
+        historyStrategy: defaultHistoryStrategy,
       } satisfies Partial<ContentEditableProps>,
       props,
     ),

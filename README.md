@@ -118,9 +118,27 @@ The default `historyStrategy` implementation in `<ContentEditable/>` behaves as 
 
 ```tsx
 function(currentPatch: Patch, nextPatch: Patch) {
+  if (
+    currentPatch.kind === 'deleteContentBackward' &&
+    nextPatch.kind === 'deleteContentForward'
+  ) {
+    return false
+  }
+
+  if (
+    currentPatch.kind === 'deleteContentForward' &&
+    nextPatch.kind === 'deleteContentBackward'
+  ) {
+    return false
+  }
+
   return !(
-    currentPatch.kind !== 'insertText' ||
-    nextPatch.kind !== 'insertText' ||
+    (currentPatch.kind !== 'insertText' &&
+      currentPatch.kind !== 'deleteContentBackward' &&
+      currentPatch.kind !== 'deleteContentForward') ||
+    (nextPatch.kind !== 'insertText' &&
+      nextPatch.kind !== 'deleteContentBackward' &&
+      nextPatch.kind !== 'deleteContentForward') ||
     (currentPatch.data === ' ' && nextPatch.data !== ' ')
   )
 }
