@@ -544,6 +544,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
 
     selection.addRange(range)
 
+    // Scroll the contenteditable if the caret goes out of bounds
     if (props.singleline) {
       const rect = range.getBoundingClientRect()
       const elementRect = element.getBoundingClientRect()
