@@ -298,7 +298,7 @@ function deleteSoftLineForward(source: string, range: RangeVector): Patch {
 /*                                                                                */
 /**********************************************************************************/
 
-function createPatchFromEvent(
+function createPatchFromInputEvent(
   event: InputEvent & { currentTarget: HTMLElement },
   source: string,
   singleline: boolean,
@@ -575,7 +575,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
         history.future.clear()
 
         const source = event.currentTarget.innerText
-        const patch = createPatchFromEvent(event, source, config.singleline)
+        const patch = createPatchFromInputEvent(event, source, config.singleline)
 
         if (patch) {
           applyPatch(patch)
