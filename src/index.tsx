@@ -9,7 +9,6 @@ import {
   type ComponentProps,
   type JSX,
 } from 'solid-js'
-import { isDev } from 'solid-js/web'
 
 const isMac = navigator.platform.startsWith('Mac')
 
@@ -34,6 +33,7 @@ export type Patch<T = never> = {
     | T
   data?: string
   range: RangeVector
+  selection: RangeVector
   undo: string
 }
 
@@ -88,7 +88,7 @@ function normalizeKeyCombo(keyCombo: string) {
 /*                                                                                */
 /**********************************************************************************/
 
-function getSelectedRange(element: HTMLElement): RangeVector {
+function getSelection(element: HTMLElement): RangeVector {
   const selection = document.getSelection()
 
   if (!selection || selection.rangeCount === 0) {
@@ -183,7 +183,7 @@ function createHistory<T extends string = never>() {
   }
 }
 
-function defaultHistoryStrategy(currentPatch: Patch, nextPatch: Patch) {
+function defaultHistoryStrategy(currentPatch: Patch<string>, nextPatch: Patch<string>) {
   if (
     (currentPatch.kind === 'deleteContentBackward' && nextPatch.kind === 'deleteContentForward') ||
     (currentPatch.kind === 'deleteContentForward' && nextPatch.kind === 'deleteContentBackward')
@@ -205,40 +205,39 @@ function defaultHistoryStrategy(currentPatch: Patch, nextPatch: Patch) {
 /*                                                                                */
 /**********************************************************************************/
 
-function createPatch(
-  kind: Patch['kind'],
-  source: string,
-  range: RangeVector,
-  data?: string,
-): Patch {
+function deleteContentForward(source: string, selection: RangeVector): Patch {
+  const range = {
+    start: selection.start,
+    end:
+      selection.start === selection.end
+        ? Math.min(source.length, selection.end + 1)
+        : selection.end,
+  }
+
   return {
-    kind,
+    kind: 'deleteContentForward',
     range,
-    data,
+    selection,
     undo: source.slice(range.start, range.end),
   }
 }
 
-function deleteContentForward(source: string, range: RangeVector): Patch {
-  const end = range.start === range.end ? Math.min(source.length, range.end + 1) : range.end
+function deleteContentBackward(source: string, selection: RangeVector): Patch {
+  const range = {
+    start: selection.start === selection.end ? Math.max(0, selection.start - 1) : selection.start,
+    end: selection.end,
+  }
 
-  return createPatch('deleteContentForward', source, {
-    start: range.start,
-    end,
-  })
+  return {
+    kind: 'deleteContentBackward',
+    range,
+    selection,
+    undo: source.slice(range.start, range.end),
+  }
 }
 
-function deleteContentBackward(source: string, range: RangeVector): Patch {
-  const start = range.start === range.end ? Math.max(0, range.start - 1) : range.start
-
-  return createPatch('deleteContentBackward', source, {
-    start,
-    end: range.end,
-  })
-}
-
-function deleteWordBackward(source: string, range: RangeVector): Patch {
-  let start = range.start
+function deleteWordBackward(source: string, selection: RangeVector): Patch {
+  let start = selection.start
 
   // If the previous value is whitespace,
   // increment to next non-whitespace character
@@ -262,14 +261,21 @@ function deleteWordBackward(source: string, range: RangeVector): Patch {
     }
   }
 
-  return createPatch('deleteWordBackward', source, {
+  const range = {
     start,
-    end: range.end,
-  })
+    end: selection.end,
+  }
+
+  return {
+    kind: 'deleteWordBackward',
+    range,
+    selection,
+    undo: source.slice(range.start, range.end),
+  }
 }
 
-function deleteWordForward(source: string, range: RangeVector): Patch {
-  let end = range.end
+function deleteWordForward(source: string, selection: RangeVector): Patch {
+  let end = selection.end
 
   // If the previous value is whitespace,
   // increment to next non-whitespace character
@@ -293,14 +299,21 @@ function deleteWordForward(source: string, range: RangeVector): Patch {
     }
   }
 
-  return createPatch('deleteWordForward', source, {
-    start: range.start,
+  const range = {
+    start: selection.start,
     end,
-  })
+  }
+
+  return {
+    kind: 'deleteWordForward',
+    selection,
+    range,
+    undo: source.slice(range.start, range.end),
+  }
 }
 
-function deleteSoftLineBackward(source: string, range: RangeVector): Patch {
-  let start = range.start
+function deleteSoftLineBackward(source: string, selection: RangeVector): Patch {
+  let start = selection.start
 
   if (isNewLine(source[start - 1])) {
     start -= 1
@@ -309,15 +322,21 @@ function deleteSoftLineBackward(source: string, range: RangeVector): Patch {
       start -= 1
     }
   }
-
-  return createPatch('deleteSoftLineBackward', source, {
+  const range = {
     start,
-    end: range.end,
-  })
+    end: selection.end,
+  }
+
+  return {
+    kind: 'deleteSoftLineBackward',
+    selection,
+    range,
+    undo: source.slice(range.start, range.end),
+  }
 }
 
-function deleteSoftLineForward(source: string, range: RangeVector): Patch {
-  let end = range.end
+function deleteSoftLineForward(source: string, selection: RangeVector): Patch {
+  let end = selection.end
 
   if (isNewLine(source[end + 1])) {
     end += 1
@@ -327,10 +346,17 @@ function deleteSoftLineForward(source: string, range: RangeVector): Patch {
     }
   }
 
-  return createPatch('deleteSoftLineForward', source, {
-    start: range.start,
+  const range = {
+    start: selection.start,
     end,
-  })
+  }
+
+  return {
+    kind: 'deleteSoftLineForward',
+    selection,
+    range,
+    undo: source.slice(range.start, range.end),
+  }
 }
 
 /**********************************************************************************/
@@ -344,43 +370,55 @@ function createPatchFromInputEvent(
   source: string,
   singleline: boolean,
 ): Patch | null {
-  const range = getSelectedRange(event.currentTarget)
+  const selection = getSelection(event.currentTarget)
+
   switch (event.inputType) {
     case 'insertText': {
-      return createPatch('insertText', source, range, event.data || '')
+      return {
+        kind: 'insertText',
+        selection,
+        range: selection,
+        undo: source.slice(selection.start, selection.end),
+        data: event.data || '',
+      }
     }
     case 'deleteContentBackward': {
-      return deleteContentBackward(source, range)
+      return deleteContentBackward(source, selection)
     }
     case 'deleteContentForward': {
-      return deleteContentForward(source, range)
+      return deleteContentForward(source, selection)
     }
     case 'deleteWordBackward': {
-      if (range.start !== range.end) {
-        return deleteContentBackward(source, range)
+      if (selection.start !== selection.end) {
+        return deleteContentBackward(source, selection)
       }
-      return deleteWordBackward(source, range)
+      return deleteWordBackward(source, selection)
     }
     case 'deleteWordForward': {
-      if (range.start !== range.end) {
-        return deleteContentForward(source, range)
+      if (selection.start !== selection.end) {
+        return deleteContentForward(source, selection)
       }
-      return deleteWordForward(source, range)
+      return deleteWordForward(source, selection)
     }
     case 'deleteSoftLineBackward': {
-      if (range.start !== range.end) {
-        return deleteContentBackward(source, range)
+      if (selection.start !== selection.end) {
+        return deleteContentBackward(source, selection)
       }
-      return deleteSoftLineBackward(source, range)
+      return deleteSoftLineBackward(source, selection)
     }
     case 'deleteSoftLineForward': {
-      if (range.start !== range.end) {
-        return deleteContentForward(source, range)
+      if (selection.start !== selection.end) {
+        return deleteContentForward(source, selection)
       }
-      return deleteSoftLineForward(source, range)
+      return deleteSoftLineForward(source, selection)
     }
     case 'deleteByCut': {
-      return createPatch('deleteByCut', source, range)
+      return {
+        kind: 'deleteByCut',
+        range: selection,
+        selection,
+        undo: source.slice(selection.start, selection.end),
+      }
     }
     case 'insertReplacementText':
     case 'insertFromPaste': {
@@ -388,12 +426,26 @@ function createPatchFromInputEvent(
       if (singleline && data) {
         data = data.replaceAll('\n', ' ')
       }
-      return createPatch(event.inputType, source, range, data)
+
+      return {
+        kind: event.inputType,
+        data,
+        range: selection,
+        selection,
+        undo: source.slice(selection.start, selection.end),
+      }
     }
     case 'insertLineBreak':
     case 'insertParagraph': {
       if (singleline) return null
-      return createPatch('insertParagraph', source, range, '\n')
+
+      return {
+        kind: event.inputType,
+        data: '\n',
+        range: selection,
+        selection,
+        undo: source.slice(selection.start, selection.end),
+      }
     }
     default:
       throw `Unsupported inputType: ${event.inputType}`
@@ -505,6 +557,9 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
     ] satisfies Array<keyof Partial<ContentEditableProps>>,
   )
   const [textContent, setTextContent] = createWritable(() => props.textContent)
+  const history = createHistory<T>()
+  let element: HTMLDivElement = null!
+
   // Add an additional newline if the value ends with a newline,
   // otherwise the browser will not display the trailing newline.
   const textContentWithTrailingNewLine = createMemo(() =>
@@ -520,8 +575,6 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       }),
     ),
   )
-  const history = createHistory<T>()
-  let element: HTMLDivElement = null!
 
   function applyPatch(patch: Patch<T>) {
     history.past.push(patch)
@@ -570,10 +623,6 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
   function onInput(event: InputEvent & { currentTarget: HTMLDivElement }) {
     event.preventDefault()
 
-    if (isDev) {
-      console.log('input-type:', event.inputType)
-    }
-
     switch (event.inputType) {
       case 'historyUndo': {
         while (true) {
@@ -584,16 +633,17 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
           if (patch.kind === 'caret') continue
 
           const {
-            range: { start, end },
-            undo,
             data = '',
+            range: { start },
+            selection,
+            undo,
           } = patch
 
           setTextContent(
             value => `${value.slice(0, start)}${undo}${value.slice(start + data.length)}`,
           )
 
-          select(start, end)
+          select(selection.start, selection.end)
 
           props.onTextContent?.(textContent())
 
@@ -631,11 +681,14 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
 
         if (patch) {
           history.future.clear()
+
           applyPatch(patch)
+
           const {
             data = '',
             range: { start },
           } = patch
+
           select(start + data.length)
         }
 
@@ -648,14 +701,10 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
     if (config.keyBindings) {
       const keyCombo = getKeyComboFromKeyboardEvent(event)
 
-      if (isDev) {
-        console.log('key-combo:', keyCombo, normalizedKeyBindings())
-      }
-
       if (keyCombo in normalizedKeyBindings()) {
         const patch = normalizedKeyBindings()[keyCombo]!({
           textContent: textContent(),
-          range: getSelectedRange(event.currentTarget),
+          range: getSelection(event.currentTarget),
           event,
         })
 
@@ -675,9 +724,11 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
 
     if (event.key.startsWith('Arrow') || event.key === 'Home' || event.key === 'End') {
       if (history.past.peek()?.kind !== 'caret') {
+        const selection = getSelection(element)
         history.past.push({
           kind: 'caret',
-          range: getSelectedRange(element),
+          range: selection,
+          selection,
           undo: '',
         })
       }
@@ -713,21 +764,25 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
   function onPointerDown() {
     if (history.past.peek()?.kind === 'caret') return
 
-    const caretDown = getSelectedRange(element)
+    const initialSelection = getSelection(element)
     const controller = new AbortController()
 
     window.addEventListener(
       'pointerup',
       () => {
-        const caretUp = getSelectedRange(element)
-        if (caretDown.start !== caretUp.start || caretDown.end !== caretUp.end) {
-          history.past.push({
-            kind: 'caret',
-            range: caretUp,
-            undo: '',
-          })
-        }
         controller.abort()
+        const selection = getSelection(element)
+
+        if (initialSelection.start === selection.start && initialSelection.end === selection.end) {
+          return
+        }
+
+        history.past.push({
+          kind: 'caret',
+          range: selection,
+          selection,
+          undo: '',
+        })
       },
       { signal: controller.signal },
     )
