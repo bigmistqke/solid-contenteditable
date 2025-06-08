@@ -110,6 +110,13 @@ function select(element: HTMLElement, { anchor, focus }: { anchor: number; focus
 function getNodeAndOffsetAtIndex(element: Node, index: number) {
   const nodes = element.childNodes
 
+  if (index === 0 && nodes.length === 0) {
+    return {
+      node: element,
+      offset: 0,
+    }
+  }
+
   let accumulator = 0
 
   // Determine which node contains the selection-(start|end)
