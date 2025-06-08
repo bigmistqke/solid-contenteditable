@@ -12,7 +12,17 @@ import {
 
 const isMac = navigator.platform.startsWith('Mac')
 
-type RangeVector = { start: number; end: number }
+interface RangeOffsets {
+  start: number
+  end: number
+}
+
+interface SelectionOffsets {
+  start: number
+  end: number
+  anchor: number
+  focus: number
+}
 
 export type Patch<T = never> = {
   // see https://w3c.github.io/input-events/#interface-InputEvent-Attributes
@@ -32,8 +42,8 @@ export type Patch<T = never> = {
     | 'caret'
     | T
   data?: string
-  range: RangeVector
-  selection: RangeVector
+  range: RangeOffsets
+  selection: SelectionOffsets
   undo: string
 }
 
@@ -57,62 +67,45 @@ function createWritable<T>(fn: () => T) {
   return [get, set] as ReturnType<typeof createSignal<T>>
 }
 
-/**********************************************************************************/
-/*                                                                                */
-/*                                 Key Combo Utils                                */
-/*                                                                                */
-/**********************************************************************************/
-
-// Follow key-combination-order as described https://superuser.com/a/1238062
-const modifiers = ['Ctrl', 'Alt', 'Shift', 'Meta']
-function getKeyComboFromKeyboardEvent(event: KeyboardEvent) {
-  if (modifiers.includes(event.key)) return event.code
-  const ctrl = event.ctrlKey ? 'Ctrl+' : ''
-  const alt = event.altKey ? 'Alt+' : ''
-  const shift = event.shiftKey ? 'Shift+' : ''
-  const meta = event.metaKey ? 'Meta+' : ''
-  return ctrl + alt + shift + meta + event.code.replace('Key', '')
-}
-
-const reversedModifiers = modifiers.toReversed()
-function normalizeKeyCombo(keyCombo: string) {
-  return keyCombo
-    .split('+')
-    .sort((a, b) => reversedModifiers.indexOf(b) - reversedModifiers.indexOf(a))
-    .join('+')
-}
-
-/**********************************************************************************/
-/*                                                                                */
-/*                                Get Selected Range                              */
-/*                                                                                */
-/**********************************************************************************/
-
-function getSelection(element: HTMLElement): RangeVector {
+function getSelectionOffsets(element: HTMLElement): SelectionOffsets {
   const selection = document.getSelection()
 
   if (!selection || selection.rangeCount === 0) {
-    return { start: 0, end: 0 }
+    return { start: 0, end: 0, anchor: 0, focus: 0 }
   }
 
-  const documentRange = selection.getRangeAt(0)
+  const range = document.createRange()
+  range.selectNodeContents(element)
+  range.setEnd(selection.anchorNode!, selection.anchorOffset)
+  const anchor = range.toString().length
 
-  // Create a range that spans from the start of the contenteditable to the selection start
-  const elementRange = document.createRange()
-  elementRange.selectNodeContents(element)
-  elementRange.setEnd(documentRange.startContainer, documentRange.startOffset)
+  range.setEnd(selection.focusNode!, selection.focusOffset)
+  const focus = range.toString().length
 
-  // The length of the elementRange gives the start offset relative to the whole content
-  const start = elementRange.toString().length
-  const end = start + documentRange.toString().length
-  return { start, end }
+  return {
+    start: anchor < focus ? anchor : focus,
+    end: anchor > focus ? anchor : focus,
+    anchor,
+    focus,
+  }
 }
 
-/**********************************************************************************/
-/*                                                                                */
-/*                          Get Node And Offset At Index                          */
-/*                                                                                */
-/**********************************************************************************/
+function select(element: HTMLElement, { anchor, focus }: { anchor: number; focus?: number }) {
+  const selection = document.getSelection()!
+  const range = document.createRange()
+
+  const resultAnchor = getNodeAndOffsetAtIndex(element, anchor)
+  range.setStart(resultAnchor.node, resultAnchor.offset)
+  range.setEnd(resultAnchor.node, resultAnchor.offset)
+
+  selection.empty()
+  selection.addRange(range)
+
+  if (focus !== undefined) {
+    const resultFocus = getNodeAndOffsetAtIndex(element, focus)
+    selection.extend(resultFocus.node, resultFocus.offset)
+  }
+}
 
 function getNodeAndOffsetAtIndex(element: Node, index: number) {
   const nodes = element.childNodes
@@ -138,6 +131,31 @@ function getNodeAndOffsetAtIndex(element: Node, index: number) {
   }
 
   throw `Could not find node`
+}
+
+/**********************************************************************************/
+/*                                                                                */
+/*                                 Key Combo Utils                                */
+/*                                                                                */
+/**********************************************************************************/
+
+// Follow key-combination-order as described https://superuser.com/a/1238062
+const modifiers = ['Ctrl', 'Alt', 'Shift', 'Meta']
+function getKeyComboFromKeyboardEvent(event: KeyboardEvent) {
+  if (modifiers.includes(event.key)) return event.code
+  const ctrl = event.ctrlKey ? 'Ctrl+' : ''
+  const alt = event.altKey ? 'Alt+' : ''
+  const shift = event.shiftKey ? 'Shift+' : ''
+  const meta = event.metaKey ? 'Meta+' : ''
+  return ctrl + alt + shift + meta + event.code.replace('Key', '')
+}
+
+const reversedModifiers = modifiers.toReversed()
+function normalizeKeyCombo(keyCombo: string) {
+  return keyCombo
+    .split('+')
+    .sort((a, b) => reversedModifiers.indexOf(b) - reversedModifiers.indexOf(a))
+    .join('+')
 }
 
 /**********************************************************************************/
@@ -205,7 +223,7 @@ function defaultHistoryStrategy(currentPatch: Patch<string>, nextPatch: Patch<st
 /*                                                                                */
 /**********************************************************************************/
 
-function deleteContentForward(source: string, selection: RangeVector): Patch {
+function deleteContentForward(source: string, selection: SelectionOffsets): Patch {
   const range = {
     start: selection.start,
     end:
@@ -222,7 +240,7 @@ function deleteContentForward(source: string, selection: RangeVector): Patch {
   }
 }
 
-function deleteContentBackward(source: string, selection: RangeVector): Patch {
+function deleteContentBackward(source: string, selection: SelectionOffsets): Patch {
   const range = {
     start: selection.start === selection.end ? Math.max(0, selection.start - 1) : selection.start,
     end: selection.end,
@@ -236,7 +254,7 @@ function deleteContentBackward(source: string, selection: RangeVector): Patch {
   }
 }
 
-function deleteWordBackward(source: string, selection: RangeVector): Patch {
+function deleteWordBackward(source: string, selection: SelectionOffsets): Patch {
   let start = selection.start
 
   // If the previous value is whitespace,
@@ -274,7 +292,7 @@ function deleteWordBackward(source: string, selection: RangeVector): Patch {
   }
 }
 
-function deleteWordForward(source: string, selection: RangeVector): Patch {
+function deleteWordForward(source: string, selection: SelectionOffsets): Patch {
   let end = selection.end
 
   // If the previous value is whitespace,
@@ -312,7 +330,7 @@ function deleteWordForward(source: string, selection: RangeVector): Patch {
   }
 }
 
-function deleteSoftLineBackward(source: string, selection: RangeVector): Patch {
+function deleteSoftLineBackward(source: string, selection: SelectionOffsets): Patch {
   let start = selection.start
 
   if (isNewLine(source[start - 1])) {
@@ -335,7 +353,7 @@ function deleteSoftLineBackward(source: string, selection: RangeVector): Patch {
   }
 }
 
-function deleteSoftLineForward(source: string, selection: RangeVector): Patch {
+function deleteSoftLineForward(source: string, selection: SelectionOffsets): Patch {
   let end = selection.end
 
   if (isNewLine(source[end + 1])) {
@@ -370,7 +388,7 @@ function createPatchFromInputEvent(
   source: string,
   singleline: boolean,
 ): Patch | null {
-  const selection = getSelection(event.currentTarget)
+  const selection = getSelectionOffsets(event.currentTarget)
 
   switch (event.inputType) {
     case 'insertText': {
@@ -503,7 +521,7 @@ export interface ContentEditableProps<T extends string | never = never>
     string,
     (data: {
       textContent: string
-      range: RangeVector
+      range: RangeOffsets
       event: KeyboardEvent & { currentTarget: HTMLElement }
     }) => Patch<T> | null
   >
@@ -590,36 +608,6 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
     props.onTextContent?.(newValue)
   }
 
-  function select(start: number, end?: number) {
-    const selection = document.getSelection()!
-    const range = document.createRange()
-    selection.removeAllRanges()
-
-    const resultStart = getNodeAndOffsetAtIndex(element, start)
-    range.setStart(resultStart.node, resultStart.offset)
-
-    if (end) {
-      const resultEnd = getNodeAndOffsetAtIndex(element, end)
-      range.setEnd(resultEnd.node, resultEnd.offset)
-    } else {
-      range.setEnd(resultStart.node, resultStart.offset)
-    }
-
-    selection.addRange(range)
-
-    // Scroll the contenteditable if the caret goes out of bounds
-    if (props.singleline) {
-      const rect = range.getBoundingClientRect()
-      const elementRect = element.getBoundingClientRect()
-
-      if (rect.left < elementRect.left) {
-        element.scrollLeft += rect.left - elementRect.left
-      } else if (rect.right > elementRect.right) {
-        element.scrollLeft += rect.right - elementRect.right
-      }
-    }
-  }
-
   function onInput(event: InputEvent & { currentTarget: HTMLDivElement }) {
     event.preventDefault()
 
@@ -643,7 +631,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
             value => `${value.slice(0, start)}${undo}${value.slice(start + data.length)}`,
           )
 
-          select(selection.start, selection.end)
+          select(element, selection)
 
           props.onTextContent?.(textContent())
 
@@ -668,7 +656,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
             data = '',
           } = patch
 
-          select(start + data.length)
+          select(element, { anchor: start + data.length })
 
           const nextPatch = history.future.peek()
           if (!nextPatch) return
@@ -689,7 +677,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
             range: { start },
           } = patch
 
-          select(start + data.length)
+          select(element, { anchor: start + data.length })
         }
 
         break
@@ -704,7 +692,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       if (keyCombo in normalizedKeyBindings()) {
         const patch = normalizedKeyBindings()[keyCombo]!({
           textContent: textContent(),
-          range: getSelection(event.currentTarget),
+          range: getSelectionOffsets(event.currentTarget),
           event,
         })
 
@@ -716,7 +704,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
             data = '',
             range: { start },
           } = patch
-          select(start + (data.length ?? 0))
+          select(element, { anchor: start + data.length })
           return
         }
       }
@@ -724,7 +712,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
 
     if (event.key.startsWith('Arrow') || event.key === 'Home' || event.key === 'End') {
       if (history.past.peek()?.kind !== 'caret') {
-        const selection = getSelection(element)
+        const selection = getSelectionOffsets(element)
         history.past.push({
           kind: 'caret',
           range: selection,
@@ -764,14 +752,14 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
   function onPointerDown() {
     if (history.past.peek()?.kind === 'caret') return
 
-    const initialSelection = getSelection(element)
+    const initialSelection = getSelectionOffsets(element)
     const controller = new AbortController()
 
     window.addEventListener(
       'pointerup',
       () => {
         controller.abort()
-        const selection = getSelection(element)
+        const selection = getSelectionOffsets(element)
 
         if (initialSelection.start === selection.start && initialSelection.end === selection.end) {
           return
