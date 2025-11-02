@@ -1,13 +1,13 @@
 import {
+  type Accessor,
   children,
+  type ComponentProps,
   createEffect,
   createMemo,
   createSignal,
+  type JSX,
   mergeProps,
   splitProps,
-  type Accessor,
-  type ComponentProps,
-  type JSX,
 } from 'solid-js'
 
 const isMac = navigator.platform.startsWith('Mac')
@@ -67,6 +67,24 @@ function createWritable<T>(fn: () => T) {
   return [get, set] as ReturnType<typeof createSignal<T>>
 }
 
+function getTextOffset(element: Node, targetNode: Node, targetOffset: number): number {
+  // Use TreeWalker to efficiently traverse text nodes
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null)
+
+  let offset = 0
+  let textNode: Node | null
+
+  while ((textNode = walker.nextNode())) {
+    if (textNode === targetNode) {
+      return offset + targetOffset
+    }
+    offset += textNode.textContent?.length || 0
+  }
+
+  // If target node not found, return the offset anyway (shouldn't happen in practice)
+  return offset + targetOffset
+}
+
 function getSelectionOffsets(element: HTMLElement): SelectionOffsets {
   const selection = document.getSelection()
 
@@ -74,17 +92,13 @@ function getSelectionOffsets(element: HTMLElement): SelectionOffsets {
     return { start: 0, end: 0, anchor: 0, focus: 0 }
   }
 
-  const range = document.createRange()
-  range.selectNodeContents(element)
-  range.setEnd(selection.anchorNode!, selection.anchorOffset)
-  const anchor = range.toString().length
-
-  range.setEnd(selection.focusNode!, selection.focusOffset)
-  const focus = range.toString().length
+  // Use the improved text offset calculation
+  const anchor = getTextOffset(element, selection.anchorNode!, selection.anchorOffset)
+  const focus = getTextOffset(element, selection.focusNode!, selection.focusOffset)
 
   return {
-    start: anchor < focus ? anchor : focus,
-    end: anchor > focus ? anchor : focus,
+    start: Math.min(anchor, focus),
+    end: Math.max(anchor, focus),
     anchor,
     focus,
   }
@@ -95,6 +109,46 @@ function select(element: HTMLElement, { anchor, focus }: { anchor: number; focus
   const range = document.createRange()
 
   const resultAnchor = getNodeAndOffsetAtIndex(element, anchor)
+
+  // Special handling for newline characters when using nested divs
+  //
+  // When content is wrapped in nested containers like:
+  // <div class="ec-line"><div class="code"><span>text\n</span></div></div>
+  // <div class="ec-line"><div class="code"><span>next line</span></div></div>
+  //
+  // The browser places the caret at the end of the newline character, but this
+  // keeps it visually on the same line. We need to move it to the beginning
+  // of the next line's content for proper visual feedback.
+  if (resultAnchor.node.nodeType === Node.TEXT_NODE) {
+    const content = resultAnchor.node.textContent || ''
+    const isAtEndOfNewline =
+      // Case 1: Pure newline in its own span - e.g., <span>\n</span>
+      // Position after 'sum' and press space creates: <span>sum</span><span>\n</span>
+      (content === '\n' && resultAnchor.offset === 1) ||
+      // Case 2: Trailing whitespace + newline - e.g., <span>sum} \n</span>
+      // Position after 'sum} ' and press space creates: <span>sum} \n</span>
+      (content.endsWith('\n') && resultAnchor.offset === content.length)
+
+    if (isAtEndOfNewline) {
+      // Find the next text node after the current one and move caret there
+      // This makes the caret appear at the beginning of the next line visually
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null)
+
+      let foundCurrent = false
+      let textNode: Node | null
+      while ((textNode = walker.nextNode())) {
+        if (foundCurrent) {
+          resultAnchor.node = textNode
+          resultAnchor.offset = 0
+          break
+        }
+        if (textNode === resultAnchor.node) {
+          foundCurrent = true
+        }
+      }
+    }
+  }
+
   range.setStart(resultAnchor.node, resultAnchor.offset)
   range.setEnd(resultAnchor.node, resultAnchor.offset)
 
@@ -108,36 +162,52 @@ function select(element: HTMLElement, { anchor, focus }: { anchor: number; focus
 }
 
 function getNodeAndOffsetAtIndex(element: Node, index: number) {
-  const nodes = element.childNodes
-
-  if (index === 0 && nodes.length === 0) {
-    return {
-      node: element,
-      offset: 0,
+  // Special case: if element is already a text node
+  if (element.nodeType === Node.TEXT_NODE) {
+    const length = element.textContent?.length || 0
+    if (index <= length) {
+      return { node: element, offset: index }
     }
+    throw new Error(`Index ${index} exceeds text node length ${length}`)
   }
 
-  let accumulator = 0
+  // Traverse all text nodes in order
+  let currentOffset = 0
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null)
 
-  // Determine which node contains the selection-(start|end)
-  for (const node of nodes) {
-    const contentLength = node.textContent?.length || 0
+  let textNode: Node | null
+  while ((textNode = walker.nextNode())) {
+    const textLength = textNode.textContent?.length || 0
 
-    accumulator += contentLength
-
-    if (accumulator >= index) {
-      const offset = index - (accumulator - contentLength)
-      if (node instanceof Text) {
-        return {
-          node,
-          offset,
-        }
+    if (currentOffset + textLength >= index) {
+      const nodeOffset = index - currentOffset
+      return {
+        node: textNode,
+        offset: nodeOffset,
       }
-      return getNodeAndOffsetAtIndex(node, offset)
     }
+    currentOffset += textLength
   }
 
-  throw `Could not find node`
+  // If no text node found and index is 0, we need to handle empty containers
+  if (index === 0) {
+    // Find the deepest element that could contain text
+    let deepest = element
+    while (deepest.firstChild && deepest.firstChild.nodeType === Node.ELEMENT_NODE) {
+      deepest = deepest.firstChild
+    }
+
+    // Create an empty text node if needed
+    if (deepest.childNodes.length === 0) {
+      const emptyText = document.createTextNode('')
+      deepest.appendChild(emptyText)
+      return { node: emptyText, offset: 0 }
+    }
+
+    return { node: deepest, offset: 0 }
+  }
+
+  throw new Error(`Could not find text node at index ${index}`)
 }
 
 /**********************************************************************************/
@@ -181,27 +251,36 @@ function createHistory<T extends string = never>() {
         future.length = 0
       },
       pop() {
-        return future.pop()
+        const patch = future.pop()
+        console.log('future pop', { patch, future, past })
+        return patch
       },
       peek() {
-        return future[future.length - 1]
+        const patch = future[future.length - 1]
+        console.log('future peek', { patch, future, past })
+        return patch
       },
       push(patch: Patch<T>) {
+        console.log('future push', { patch, future, past })
         future.push(patch)
       },
     },
     past: {
       pop() {
         const patch = past.pop()
+        console.log('past pop', { patch, future, past })
         if (patch) {
           future.push(patch)
         }
         return patch
       },
       peek() {
-        return past[past.length - 1]
+        const patch = past[past.length - 1]
+        console.log('past pop', { patch, future, past })
+        return patch
       },
       push(patch: Patch<T>) {
+        console.log('past push', { patch, future, past })
         past.push(patch)
       },
     },
@@ -217,11 +296,12 @@ function defaultHistoryStrategy(currentPatch: Patch<string>, nextPatch: Patch<st
   }
 
   const relevantKinds = ['insertText', 'deleteContentBackward', 'deleteContentForward']
-  return (
+  const result =
     relevantKinds.includes(currentPatch.kind) &&
     relevantKinds.includes(nextPatch.kind) &&
     !(currentPatch.data === ' ' && nextPatch.data !== ' ')
-  )
+
+  return result
 }
 
 /**********************************************************************************/
@@ -647,6 +727,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
 
           if (!config.historyStrategy(patch, nextPatch)) return
         }
+        break
       }
       case 'historyRedo': {
         while (true) {
@@ -670,6 +751,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
 
           if (!config.historyStrategy(patch, nextPatch)) return
         }
+        break
       }
       default: {
         const patch = createPatchFromInputEvent(event, textContent(), config.singleline)
@@ -784,18 +866,21 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
   }
 
   createEffect(() => {
-    if (
-      c
-        .toArray()
-        .map(value => (value instanceof Element ? value.textContent : value))
-        .join('') !== textContentWithTrailingNewLine()
-    ) {
+    const elementTextContent = c
+      .toArray()
+      .map(value => (value instanceof Element ? value.textContent : value))
+      .join('')
+    if (elementTextContent !== textContentWithTrailingNewLine()) {
       console.warn(
         `⚠️ WARNING ⚠️
 - props.textContent and the textContent of props.children(textContent) are not equal!
 - This breaks core-assumptions of <ContentEditable/> and will cause undefined behaviors!
 - see www.github.com/bigmistqke/solid-contenteditable/#limitations-with-render-prop`,
       )
+      console.table({
+        'props.textContent': textContentWithTrailingNewLine(),
+        'element.textContent': elementTextContent,
+      })
     }
   })
 

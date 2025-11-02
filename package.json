@@ -41,23 +41,27 @@
   },
   "typesVersions": {},
   "scripts": {
-    "dev": "vite serve dev",
-    "build": "tsup",
     "build:dev": "vite build dev",
-    "test": "concurrently pnpm:test:*",
-    "test:client": "vitest",
-    "test:ssr": "pnpm run test:client --mode ssr",
-    "prepublishOnly": "pnpm build",
+    "build": "tsup",
+    "dev": "vite serve dev",
     "format": "prettier --ignore-path .gitignore -w \"src/**/*.{js,ts,json,css,tsx,jsx}\" \"dev/**/*.{js,ts,json,css,tsx,jsx}\"",
-    "lint": "concurrently pnpm:lint:*",
+    "generate-supported-events": "pnpm test:e2e --project=chromium --reporter=json -- w3c-input-types | node script/support.ts",
     "lint:code": "eslint --ignore-path .gitignore --max-warnings 0 src/**/*.{js,ts,tsx,jsx}",
     "lint:types": "tsc --noEmit",
+    "lint": "concurrently pnpm:lint:*",
+    "prepublishOnly": "pnpm build",
+    "test": "playwright test -c test/playwright.config.ts",
+    "test:ssr": "vitest --mode ssr",
+    "test:serve": "vite serve test",
     "update-deps": "pnpm up -Li"
   },
   "peerDependencies": {
     "solid-js": "^1.6.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "@solidjs/testing-library": "^0.8.10",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20.12.12",
     "@typescript-eslint/eslint-plugin": "^7.9.0",
     "@typescript-eslint/parser": "^7.9.0",
@@ -73,6 +77,7 @@
     "tsup": "^8.0.2",
     "tsup-preset-solid": "^2.2.0",
     "typescript": "^5.4.5",
+    "valibot": "^1.1.0",
     "vite": "^5.2.11",
     "vite-plugin-solid": "^2.10.2",
     "vitest": "^1.6.0"

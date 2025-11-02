@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm add:*)",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm lint:types:*)",
+      "Bash(rm:*)",
+      "Bash(pnpm build:*)",
+      "Bash(vitest --help)",
+      "Bash(pnpm vitest:*)",
+      "Bash(pnpm exec playwright:*)",
+      "Bash(pkill:*)",
+      "Bash(lsof:*)",
+      "Bash(kill:*)",
+      "Bash(curl:*)",
+      "Bash(pnpm dev:*)",
+      "WebFetch(domain:w3c.github.io)",
+      "Bash(npm test:*)",
+      "Bash(npm run test:unit:*)",
+      "Bash(npm run test:e2e:*)",
+      "Bash(grep:*)"
+    ],
+    "deny": []
+  }
+}
