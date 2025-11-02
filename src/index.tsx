@@ -715,9 +715,9 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
     ] satisfies Array<keyof Partial<ContentEditableProps>>,
   )
   const [textContent, setTextContent] = createWritable(() => props.textContent)
-  const [isComposing, setIsComposing] = createSignal(false)
   const history = createHistory<T>()
   let element: HTMLDivElement = null!
+  let isComposing = false
 
   // Add an additional newline if the value ends with a newline,
   // otherwise the browser will not display the trailing newline.
@@ -751,6 +751,11 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
 
   function onInput(event: InputEvent & { currentTarget: HTMLDivElement }) {
     event.preventDefault()
+
+    // Block regular input events during composition to prevent double characters on Android
+    if (isComposing && event.inputType !== 'insertCompositionText') {
+      return
+    }
 
     switch (event.inputType) {
       case 'historyUndo': {
@@ -920,7 +925,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
   }
 
   function onCompositionStart(event: CompositionEvent & { currentTarget: HTMLElement }) {
-    setIsComposing(true)
+    isComposing = true
   }
 
   function onCompositionUpdate(event: CompositionEvent & { currentTarget: HTMLElement }) {
@@ -929,7 +934,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
   }
 
   function onCompositionEnd(event: CompositionEvent & { currentTarget: HTMLElement }) {
-    setIsComposing(false)
+    isComposing = false
 
     // The compositionend event is followed by an input event with insertCompositionText
     // So we don't need to manually handle text insertion here
