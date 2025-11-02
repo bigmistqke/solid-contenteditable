@@ -311,12 +311,38 @@ function defaultHistoryStrategy(currentPatch: Patch<string>, nextPatch: Patch<st
 /**********************************************************************************/
 
 function deleteContentForward(source: string, selection: SelectionOffsets): Patch {
+  let end = selection.end
+
+  if (selection.start === selection.end) {
+    // Find the next grapheme cluster boundary
+    const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' })
+    const segments = Array.from(segmenter.segment(source))
+
+    // Find the segment that contains our current position
+    let currentOffset = 0
+    for (const segment of segments) {
+      const segmentEnd = currentOffset + segment.segment.length
+      if (currentOffset <= selection.end && selection.end < segmentEnd) {
+        // We're inside this segment, delete the whole segment
+        end = segmentEnd
+        break
+      } else if (selection.end === currentOffset) {
+        // We're at the beginning of this segment, delete the whole segment
+        end = segmentEnd
+        break
+      }
+      currentOffset = segmentEnd
+    }
+
+    // If we didn't find a segment (at end of string), just move one position
+    if (end === selection.end) {
+      end = Math.min(source.length, selection.end + 1)
+    }
+  }
+
   const range = {
     start: selection.start,
-    end:
-      selection.start === selection.end
-        ? Math.min(source.length, selection.end + 1)
-        : selection.end,
+    end,
   }
 
   return {
@@ -328,8 +354,33 @@ function deleteContentForward(source: string, selection: SelectionOffsets): Patc
 }
 
 function deleteContentBackward(source: string, selection: SelectionOffsets): Patch {
+  let start = selection.start
+
+  if (selection.start === selection.end) {
+    // Find the previous grapheme cluster boundary
+    const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' })
+    const segments = Array.from(segmenter.segment(source))
+
+    // Find the segment that contains our current position
+    let currentOffset = 0
+    for (const segment of segments) {
+      const segmentEnd = currentOffset + segment.segment.length
+      if (currentOffset < selection.start && selection.start <= segmentEnd) {
+        // We're inside this segment or at its end, delete the whole segment
+        start = currentOffset
+        break
+      }
+      currentOffset = segmentEnd
+    }
+
+    // If we didn't find a segment (at beginning of string), just move one position back
+    if (start === selection.start) {
+      start = Math.max(0, selection.start - 1)
+    }
+  }
+
   const range = {
-    start: selection.start === selection.end ? Math.max(0, selection.start - 1) : selection.start,
+    start,
     end: selection.end,
   }
 
