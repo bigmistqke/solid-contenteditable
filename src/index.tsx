@@ -930,7 +930,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
 
   function onCompositionEnd(event: CompositionEvent & { currentTarget: HTMLElement }) {
     setIsComposing(false)
-    
+
     // The compositionend event is followed by an input event with insertCompositionText
     // So we don't need to manually handle text insertion here
   }
