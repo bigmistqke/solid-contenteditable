@@ -1,13 +1,13 @@
 import { expect, test } from '@playwright/test'
-import { 
+import {
+  endComposition,
   selectAndClear,
-  simulateComposition,
   simulateCancelledComposition,
-  simulateJapaneseInput,
   simulateChineseInput,
+  simulateComposition,
+  simulateJapaneseInput,
   simulateKoreanInput,
   startCompositionWithoutEnding,
-  endComposition
 } from './utils'
 
 /**
@@ -46,12 +46,12 @@ test.describe('IME and Composition Events', () => {
     // Simulate Korean IME input for "annyeong" (안녕)
     // Korean IME builds characters step by step
     const koreanSteps = [
-      'ㅇ',      // First character starts
-      '아',      // Add vowel
-      '안',      // Complete first character
-      '안ㄴ',    // Start second character
-      '안녀',    // Add vowel
-      '안녕'     // Complete word
+      'ㅇ', // First character starts
+      '아', // Add vowel
+      '안', // Complete first character
+      '안ㄴ', // Start second character
+      '안녀', // Add vowel
+      '안녕', // Complete word
     ]
     await simulateKoreanInput(page, '[role="textbox"]', koreanSteps, '안녕')
 
@@ -61,10 +61,10 @@ test.describe('IME and Composition Events', () => {
   test('handles composition cancellation', async ({ page }) => {
     const editor = page.locator('[role="textbox"]').first()
     await selectAndClear(page, editor)
-    
+
     // Type initial text
     await editor.type('Hello ')
-    
+
     // Simulate a cancelled composition
     await simulateCancelledComposition(page, '[role="textbox"]', ['こんに'])
 
@@ -75,13 +75,13 @@ test.describe('IME and Composition Events', () => {
   test('handles composition with existing selection', async ({ page }) => {
     const editor = page.locator('[role="textbox"]').first()
     await selectAndClear(page, editor)
-    
+
     // Type initial text
     await editor.type('Hello World')
-    
+
     // Select "World"
     await page.keyboard.press('Shift+ArrowLeft+ArrowLeft+ArrowLeft+ArrowLeft+ArrowLeft')
-    
+
     // Start composition which should replace selection
     await simulateComposition(page, '[role="textbox"]', ['世界'], '世界')
 
@@ -91,7 +91,7 @@ test.describe('IME and Composition Events', () => {
   test('handles multiple rapid compositions', async ({ page }) => {
     const editor = page.locator('[role="textbox"]').first()
     await selectAndClear(page, editor)
-    
+
     // Simulate rapid composition inputs
     await simulateComposition(page, '[role="textbox"]', ['你'], '你')
     await simulateComposition(page, '[role="textbox"]', ['好'], '好')
@@ -152,7 +152,7 @@ test.describe('IME and Composition Events', () => {
 
     // Position cursor after the emoji
     await page.keyboard.press('Home')
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < 6; i++) {
       // Move past "Hello "
       await page.keyboard.press('ArrowRight')
     }
@@ -160,7 +160,7 @@ test.describe('IME and Composition Events', () => {
     // Delete the emoji - should delete the entire cluster
     await page.keyboard.press('Delete')
 
-    await expect(editor).toHaveText('Hello  World')
+    await expect(editor).toHaveText('Hello World')
   })
 })
 
@@ -281,8 +281,8 @@ test.describe('Advanced Composition Scenarios', () => {
 
     // Start a longer composition but commit partial results
     await startCompositionWithoutEnding(page, '[role="textbox"]', ['nihao'])
-    await endComposition(page, '[role="textbox"]', 'ni')  // Partial commit
-    
+    await endComposition(page, '[role="textbox"]', 'ni') // Partial commit
+
     // Start another composition for the rest
     await simulateChineseInput(page, '[role="textbox"]', 'hao', '好')
 
@@ -295,10 +295,10 @@ test.describe('Advanced Composition Scenarios', () => {
 
     // Type English text
     await editor.type('Hello ')
-    
+
     // Add Japanese via composition
     await simulateJapaneseInput(page, '[role="textbox"]', 'sekai', '世界')
-    
+
     // Add more English
     await editor.type(' World')
 
