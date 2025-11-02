@@ -32,6 +32,7 @@ export type Patch<T = never> = {
     | 'insertParagraph'
     | 'insertReplacementText'
     | 'insertText'
+    | 'insertCompositionText'
     | 'deleteByCut'
     | 'deleteContentForward'
     | 'deleteContentBackward'
@@ -529,9 +530,10 @@ function createPatchFromInputEvent(
   const selection = getSelectionOffsets(event.currentTarget)
 
   switch (event.inputType) {
-    case 'insertText': {
+    case 'insertText':
+    case 'insertCompositionText': {
       return {
-        kind: 'insertText',
+        kind: event.inputType,
         selection,
         range: selection,
         undo: source.slice(selection.start, selection.end),
@@ -713,6 +715,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
     ] satisfies Array<keyof Partial<ContentEditableProps>>,
   )
   const [textContent, setTextContent] = createWritable(() => props.textContent)
+  const [isComposing, setIsComposing] = createSignal(false)
   const history = createHistory<T>()
   let element: HTMLDivElement = null!
 
@@ -916,6 +919,22 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
     )
   }
 
+  function onCompositionStart(event: CompositionEvent & { currentTarget: HTMLElement }) {
+    setIsComposing(true)
+  }
+
+  function onCompositionUpdate(event: CompositionEvent & { currentTarget: HTMLElement }) {
+    // During composition, we don't need to do anything special
+    // The browser handles the visual updates automatically
+  }
+
+  function onCompositionEnd(event: CompositionEvent & { currentTarget: HTMLElement }) {
+    setIsComposing(false)
+    
+    // The compositionend event is followed by an input event with insertCompositionText
+    // So we don't need to manually handle text insertion here
+  }
+
   createEffect(() => {
     const elementTextContent = c
       .toArray()
@@ -945,6 +964,9 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       onInput={onInput}
       onKeyDown={onKeyDown}
       onPointerDown={onPointerDown}
+      onCompositionStart={onCompositionStart}
+      onCompositionUpdate={onCompositionUpdate}
+      onCompositionEnd={onCompositionEnd}
       style={{
         'scrollbar-width': props.singleline ? 'none' : undefined,
         'overflow-x': props.singleline ? 'auto' : undefined,
