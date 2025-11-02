@@ -54,10 +54,6 @@ export type Patch<T = never> = {
 /*                                                                                */
 /**********************************************************************************/
 
-const isAlphanumeric = (char?: string): boolean => /^[a-zA-Z0-9]$/.test(char || '')
-
-const isWhiteSpace = (char?: string) => char === ' ' || char === '\t' || char === '\n'
-
 const isNewLine = (char?: string) => char === '\n'
 
 function getGraphemeSegments(text: string) {
@@ -108,12 +104,12 @@ function getWordSegments(text: string) {
 
 function getNextWordBoundary(text: string, position: number): number {
   const segments = getWordSegments(text)
-  
+
   // Find the next word boundary after the current position
   for (const segment of segments) {
     // Skip if we haven't reached our position yet
     if (segment.index + segment.segment.length <= position) continue
-    
+
     // If this segment starts after our position
     if (segment.index > position) {
       // If it's a word, return the start of it
@@ -121,35 +117,39 @@ function getNextWordBoundary(text: string, position: number): number {
       // Otherwise continue to find the next word
       continue
     }
-    
+
     // We're inside this segment, return the end of it
     return segment.index + segment.segment.length
   }
-  
+
   return text.length
 }
 
 function getPreviousWordBoundary(text: string, position: number): number {
   const segments = getWordSegments(text)
-  
+
   // Find the previous word boundary before the current position
   for (let i = segments.length - 1; i >= 0; i--) {
     const segment = segments[i]
-    
+
     // Skip if this segment is at or after our position
     if (segment.index >= position) continue
-    
+
     // If this segment ends before our position and is a word, return its start
     if (segment.isWordLike && segment.index + segment.segment.length <= position) {
       return segment.index
     }
-    
+
     // If we're inside this segment and it's a word, return its start
-    if (segment.isWordLike && segment.index < position && segment.index + segment.segment.length > position) {
+    if (
+      segment.isWordLike &&
+      segment.index < position &&
+      segment.index + segment.segment.length > position
+    ) {
       return segment.index
     }
   }
-  
+
   return 0
 }
 
@@ -440,9 +440,10 @@ function deleteContentBackward(source: string, selection: SelectionOffsets): Pat
 
 function deleteWordBackward(source: string, selection: SelectionOffsets): Patch {
   const range = {
-    start: selection.start === selection.end 
-      ? getPreviousWordBoundary(source, selection.start)
-      : selection.start,
+    start:
+      selection.start === selection.end
+        ? getPreviousWordBoundary(source, selection.start)
+        : selection.start,
     end: selection.end,
   }
 
@@ -457,9 +458,10 @@ function deleteWordBackward(source: string, selection: SelectionOffsets): Patch 
 function deleteWordForward(source: string, selection: SelectionOffsets): Patch {
   const range = {
     start: selection.start,
-    end: selection.start === selection.end 
-      ? getNextWordBoundary(source, selection.end)
-      : selection.end,
+    end:
+      selection.start === selection.end
+        ? getNextWordBoundary(source, selection.end)
+        : selection.end,
   }
 
   return {
