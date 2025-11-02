@@ -234,4 +234,92 @@ test.describe('ContentEditable Browser Tests', () => {
     await editor.type('X')
     await expect(editor).toHaveText('HelloX World')
   })
+
+  test('word deletion works with languages without spaces', async ({ page }) => {
+    const editor = page.locator('[role="textbox"]').first()
+    const deleteWordKey = process.platform === 'darwin' ? 'Alt+Backspace' : 'Control+Backspace'
+    
+    // Test Thai text (no spaces between words)
+    await selectAndClear(page, editor)
+    await editor.type('ภาษาไทย') // "Thai language"
+    
+    // Delete word backward should delete the last word
+    await page.keyboard.press(deleteWordKey)
+    // Due to Thai word segmentation, it should delete "ไทย" (Thai)
+    await expect(editor).toHaveText('ภาษา')
+    
+    // Test Chinese text (no spaces between words)
+    await selectAndClear(page, editor)
+    await editor.type('中文测试') // "Chinese test"
+    
+    // Delete word backward should delete based on word boundaries
+    await page.keyboard.press(deleteWordKey)
+    // Should delete "测试" (test)
+    await expect(editor).toHaveText('中文')
+    
+    // Test Lao text (no spaces between words)
+    await selectAndClear(page, editor)
+    await editor.type('ພາສາລາວ') // "Lao language"
+    
+    // Delete word backward
+    await page.keyboard.press(deleteWordKey)
+    // Should delete the last word based on Lao word segmentation
+    const laoText = await editor.textContent()
+    expect(laoText).not.toBe('ພາສາລາວ') // Should have deleted something
+    expect(laoText.length).toBeLessThan(7) // Original length is 7
+  })
+
+  test('word deletion forward works with languages without spaces', async ({ page }) => {
+    const editor = page.locator('[role="textbox"]').first()
+    const deleteWordForwardKey = process.platform === 'darwin' ? 'Alt+Delete' : 'Control+Delete'
+    
+    // Test Thai text
+    await selectAndClear(page, editor)
+    await editor.type('ภาษาไทย') // "Thai language"
+    await page.keyboard.press('Home') // Move to beginning
+    
+    // Delete word forward should delete the first word
+    await page.keyboard.press(deleteWordForwardKey)
+    // Should delete "ภาษา" (language)
+    await expect(editor).toHaveText('ไทย')
+    
+    // Test Chinese text
+    await selectAndClear(page, editor)
+    await editor.type('中文测试') // "Chinese test"
+    await page.keyboard.press('Home')
+    
+    // Delete word forward
+    await page.keyboard.press(deleteWordForwardKey)
+    // Should delete "中文" (Chinese)
+    await expect(editor).toHaveText('测试')
+  })
+
+  test('mixed language word deletion works correctly', async ({ page }) => {
+    const editor = page.locator('[role="textbox"]').first()
+    const deleteWordKey = process.platform === 'darwin' ? 'Alt+Backspace' : 'Control+Backspace'
+    
+    // Test mixed English and Chinese
+    await selectAndClear(page, editor)
+    await editor.type('Hello世界World')
+    
+    // Delete word backward should delete "World"
+    await page.keyboard.press(deleteWordKey)
+    await expect(editor).toHaveText('Hello世界')
+    
+    // Delete again should delete "世界"
+    await page.keyboard.press(deleteWordKey)
+    await expect(editor).toHaveText('Hello')
+    
+    // Test mixed with spaces
+    await selectAndClear(page, editor)
+    await editor.type('Test 中文 Word')
+    
+    // Delete word backward should delete "Word"
+    await page.keyboard.press(deleteWordKey)
+    await expect(editor).toHaveText('Test 中文 ')
+    
+    // Delete again should delete "中文" along with trailing space
+    await page.keyboard.press(deleteWordKey)
+    await expect(editor).toHaveText('Test ')
+  })
 })

@@ -101,6 +101,58 @@ function getPreviousGraphemeClusterBoundary(text: string, position: number): num
   return Math.max(0, position - 1)
 }
 
+function getWordSegments(text: string) {
+  const segmenter = new Intl.Segmenter(undefined, { granularity: 'word' })
+  return Array.from(segmenter.segment(text))
+}
+
+function getNextWordBoundary(text: string, position: number): number {
+  const segments = getWordSegments(text)
+  
+  // Find the next word boundary after the current position
+  for (const segment of segments) {
+    // Skip if we haven't reached our position yet
+    if (segment.index + segment.segment.length <= position) continue
+    
+    // If this segment starts after our position
+    if (segment.index > position) {
+      // If it's a word, return the start of it
+      if (segment.isWordLike) return segment.index
+      // Otherwise continue to find the next word
+      continue
+    }
+    
+    // We're inside this segment, return the end of it
+    return segment.index + segment.segment.length
+  }
+  
+  return text.length
+}
+
+function getPreviousWordBoundary(text: string, position: number): number {
+  const segments = getWordSegments(text)
+  
+  // Find the previous word boundary before the current position
+  for (let i = segments.length - 1; i >= 0; i--) {
+    const segment = segments[i]
+    
+    // Skip if this segment is at or after our position
+    if (segment.index >= position) continue
+    
+    // If this segment ends before our position and is a word, return its start
+    if (segment.isWordLike && segment.index + segment.segment.length <= position) {
+      return segment.index
+    }
+    
+    // If we're inside this segment and it's a word, return its start
+    if (segment.isWordLike && segment.index < position && segment.index + segment.segment.length > position) {
+      return segment.index
+    }
+  }
+  
+  return 0
+}
+
 // TODO: replace with createSignal when solid 2.0
 function createWritable<T>(fn: () => T) {
   const signal = createMemo(() => createSignal(fn()))
@@ -387,32 +439,10 @@ function deleteContentBackward(source: string, selection: SelectionOffsets): Pat
 }
 
 function deleteWordBackward(source: string, selection: SelectionOffsets): Patch {
-  let start = selection.start
-
-  // If the previous value is whitespace,
-  // increment to next non-whitespace character
-  if (isWhiteSpace(source[start - 1])) {
-    while (start > 0 && isWhiteSpace(source[start - 1])) {
-      start--
-    }
-  }
-  // If the previous value is alphanumeric,
-  // we delete all previous alphanumeric values
-  if (isAlphanumeric(source[start - 1])) {
-    while (start > 0 && isAlphanumeric(source[start - 1])) {
-      start--
-    }
-  } else {
-    // If the previous value is not alphanumeric,
-    // we delete all previous non-alphanumeric values
-    // until the next whitespace or alphanumeric
-    while (start > 0 && !isWhiteSpace(source[start - 1]) && !isAlphanumeric(source[start - 1])) {
-      start--
-    }
-  }
-
   const range = {
-    start,
+    start: selection.start === selection.end 
+      ? getPreviousWordBoundary(source, selection.start)
+      : selection.start,
     end: selection.end,
   }
 
@@ -425,33 +455,11 @@ function deleteWordBackward(source: string, selection: SelectionOffsets): Patch 
 }
 
 function deleteWordForward(source: string, selection: SelectionOffsets): Patch {
-  let end = selection.end
-
-  // If the previous value is whitespace,
-  // increment to next non-whitespace character
-  if (isWhiteSpace(source[end])) {
-    while (end < source.length && isWhiteSpace(source[end])) {
-      end += 1
-    }
-  }
-  // If the previous value is alphanumeric,
-  // we delete all previous alphanumeric values
-  if (isAlphanumeric(source[end])) {
-    while (end < source.length && isAlphanumeric(source[end])) {
-      end += 1
-    }
-  } else {
-    // If the previous value is not alphanumeric,
-    // we delete all previous non-alphanumeric values
-    // until the next whitespace or alphanumeric
-    while (end < source.length && !isWhiteSpace(source[end]) && !isAlphanumeric(source[end])) {
-      end += 1
-    }
-  }
-
   const range = {
     start: selection.start,
-    end,
+    end: selection.start === selection.end 
+      ? getNextWordBoundary(source, selection.end)
+      : selection.end,
   }
 
   return {
@@ -522,9 +530,12 @@ function createPatchFromInputEvent(
 ): Patch | null {
   const selection = getSelectionOffsets(event.currentTarget)
 
+  console.log('CREATE PATCH FROM INPUT EVENT', event)
+
   switch (event.inputType) {
-    case 'insertText':
-    case 'insertCompositionText': {
+    case 'insertCompositionText':
+      throw 'yolo'
+    case 'insertText': {
       return {
         kind: event.inputType,
         selection,
@@ -742,14 +753,10 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
     props.onTextContent?.(newValue)
   }
 
-  function onInput(event: InputEvent & { currentTarget: HTMLDivElement }) {
+  function onBeforeInput(event: InputEvent & { currentTarget: HTMLDivElement }) {
     event.preventDefault()
 
-    // Block only insertText during composition to prevent double characters on Android
-    // This prevents the duplicate regular text event while allowing the correct composition event
-    if (isComposing && event.inputType === 'insertText') {
-      return
-    }
+    console.log('onBeforeInput', event)
 
     switch (event.inputType) {
       case 'historyUndo': {
@@ -919,16 +926,16 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
   }
 
   function onCompositionStart(event: CompositionEvent & { currentTarget: HTMLElement }) {
+    event.preventDefault()
     isComposing = true
   }
 
   function onCompositionUpdate(event: CompositionEvent & { currentTarget: HTMLElement }) {
-    // Prevent default to stop browser's automatic DOM manipulation during composition
-    // This helps prevent double character issues on Android
     event.preventDefault()
   }
 
   function onCompositionEnd(event: CompositionEvent & { currentTarget: HTMLElement }) {
+    event.preventDefault()
     isComposing = false
 
     // The compositionend event is followed by an input event with insertCompositionText
@@ -960,8 +967,8 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       role="textbox"
       aria-multiline={!config.singleline}
       contenteditable={config.editable}
-      onBeforeInput={onInput}
-      onInput={onInput}
+      onBeforeInput={onBeforeInput}
+      onInput={onBeforeInput}
       onKeyDown={onKeyDown}
       onPointerDown={onPointerDown}
       onCompositionStart={onCompositionStart}
