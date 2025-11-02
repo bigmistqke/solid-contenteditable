@@ -67,10 +67,10 @@ function getGraphemeSegments(text: string) {
 
 function getNextGraphemeClusterBoundary(text: string, position: number): number {
   if (position >= text.length) return position
-  
+
   const segments = getGraphemeSegments(text)
   let currentOffset = 0
-  
+
   for (const segment of segments) {
     const segmentEnd = currentOffset + segment.segment.length
     if (position >= currentOffset && position < segmentEnd) {
@@ -79,16 +79,16 @@ function getNextGraphemeClusterBoundary(text: string, position: number): number 
     }
     currentOffset = segmentEnd
   }
-  
+
   return Math.min(text.length, position + 1)
 }
 
 function getPreviousGraphemeClusterBoundary(text: string, position: number): number {
   if (position <= 0) return 0
-  
+
   const segments = getGraphemeSegments(text)
   let currentOffset = 0
-  
+
   for (const segment of segments) {
     const segmentEnd = currentOffset + segment.segment.length
     if (position > currentOffset && position <= segmentEnd) {
@@ -97,7 +97,7 @@ function getPreviousGraphemeClusterBoundary(text: string, position: number): num
     }
     currentOffset = segmentEnd
   }
-  
+
   return Math.max(0, position - 1)
 }
 
@@ -355,9 +355,10 @@ function defaultHistoryStrategy(currentPatch: Patch<string>, nextPatch: Patch<st
 function deleteContentForward(source: string, selection: SelectionOffsets): Patch {
   const range = {
     start: selection.start,
-    end: selection.start === selection.end 
-      ? getNextGraphemeClusterBoundary(source, selection.end)
-      : selection.end,
+    end:
+      selection.start === selection.end
+        ? getNextGraphemeClusterBoundary(source, selection.end)
+        : selection.end,
   }
 
   return {
@@ -370,9 +371,10 @@ function deleteContentForward(source: string, selection: SelectionOffsets): Patc
 
 function deleteContentBackward(source: string, selection: SelectionOffsets): Patch {
   const range = {
-    start: selection.start === selection.end 
-      ? getPreviousGraphemeClusterBoundary(source, selection.start)
-      : selection.start,
+    start:
+      selection.start === selection.end
+        ? getPreviousGraphemeClusterBoundary(source, selection.start)
+        : selection.start,
     end: selection.end,
   }
 
@@ -743,8 +745,9 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
   function onInput(event: InputEvent & { currentTarget: HTMLDivElement }) {
     event.preventDefault()
 
-    // Block regular input events during composition to prevent double characters on Android
-    if (isComposing && event.inputType !== 'insertCompositionText') {
+    // Block only insertText during composition to prevent double characters on Android
+    // This prevents the duplicate regular text event while allowing the correct composition event
+    if (isComposing && event.inputType === 'insertText') {
       return
     }
 
@@ -920,8 +923,9 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
   }
 
   function onCompositionUpdate(event: CompositionEvent & { currentTarget: HTMLElement }) {
-    // During composition, we don't need to do anything special
-    // The browser handles the visual updates automatically
+    // Prevent default to stop browser's automatic DOM manipulation during composition
+    // This helps prevent double character issues on Android
+    event.preventDefault()
   }
 
   function onCompositionEnd(event: CompositionEvent & { currentTarget: HTMLElement }) {
