@@ -58,9 +58,11 @@ export type Patch<T = never> = {
 
 const isNewLine = (char?: string) => char === '\n'
 
+const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+const wordSegmenter = new Intl.Segmenter(undefined, { granularity: 'word' })
+
 function getGraphemeSegments(text: string) {
-  const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' })
-  return Array.from(segmenter.segment(text))
+  return Array.from(graphemeSegmenter.segment(text))
 }
 
 function getNextGraphemeClusterBoundary(text: string, position: number): number {
@@ -100,8 +102,7 @@ function getPreviousGraphemeClusterBoundary(text: string, position: number): num
 }
 
 function getWordSegments(text: string) {
-  const segmenter = new Intl.Segmenter(undefined, { granularity: 'word' })
-  return Array.from(segmenter.segment(text))
+  return Array.from(wordSegmenter.segment(text))
 }
 
 function getNextWordBoundary(text: string, position: number): number {
@@ -320,7 +321,9 @@ function getKeyComboFromKeyboardEvent(event: KeyboardEvent) {
   const alt = event.altKey ? 'Alt+' : ''
   const shift = event.shiftKey ? 'Shift+' : ''
   const meta = event.metaKey ? 'Meta+' : ''
-  return ctrl + alt + shift + meta + event.code.replace('Key', '')
+  const keyCombo = ctrl + alt + shift + meta + event.code.replace('Key', '')
+
+  DEBUG && console.info('getKeyComboFromKeyboardEvent', event, keyCombo)
 }
 
 const reversedModifiers = modifiers.toReversed()
@@ -878,6 +881,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
 
   function onKeyDown(event: KeyboardEvent & { currentTarget: HTMLElement }) {
     DEBUG && console.info('onKeyDown', event)
+
     if (config.keyBindings) {
       const keyCombo = getKeyComboFromKeyboardEvent(event)
 
