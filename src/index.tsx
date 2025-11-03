@@ -1085,25 +1085,37 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       throw new Error('Expected compositionStartSelection to be defined.')
     }
 
-    // Restore selection to where composition started
-    select(element, compositionStartSelection)
-
-    // Dispatch beforeinput event to go through normal input handling
-    const inputEvent = new InputEvent('beforeinput', {
-      inputType: 'insertCompositionText',
+    // During composition, the browser has already:
+    // 1. Removed any selected text
+    // 2. Inserted the composed text
+    // 3. Positioned the cursor
+    // We need to sync our state with the browser's changes
+    
+    const currentText = event.currentTarget.textContent || ''
+    const previousText = textContent()
+    
+    // Create a patch for history based on what actually happened
+    const patch: Patch = {
+      kind: 'insertCompositionText',
       data: event.data || '',
-      bubbles: true,
-      cancelable: true,
-    })
-
-    // Set isComposing to false since composition is ending
-    Object.defineProperty(inputEvent, 'isComposing', {
-      value: false,
-      writable: false,
-    })
-
-    event.currentTarget.dispatchEvent(inputEvent)
-
+      range: compositionStartSelection,
+      selection: compositionStartSelection,
+      undo: previousText.slice(compositionStartSelection.start, compositionStartSelection.end),
+    }
+    
+    history.past.push(patch)
+    history.future.clear()
+    
+    // Sync our state with the browser's state
+    setTextContent(currentText)
+    props.onTextContent?.(currentText)
+    
+    // Position the caret after the composed text
+    const composedTextLength = event.data?.length || 0
+    const newCaretPosition = compositionStartSelection.start + composedTextLength
+    
+    select(element, { anchor: newCaretPosition })
+    
     compositionStartSelection = null
 
     config.onCompositionEnd?.(event)
