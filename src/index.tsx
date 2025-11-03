@@ -988,24 +988,24 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       throw new Error('Expected compositionStartSelection to be defined.')
     }
 
-    // NOTE:  We ignore insertCompositionText in onBeforeInput
-    const patch = {
-      kind: 'insertCompositionText',
-      selection: compositionStartSelection,
-      range: compositionStartSelection,
-      undo: textContent().slice(compositionStartSelection.start, compositionStartSelection.end),
+    // Restore selection to where composition started
+    select(element, compositionStartSelection)
+
+    // Dispatch beforeinput event to go through normal input handling
+    const inputEvent = new InputEvent('beforeinput', {
+      inputType: 'insertCompositionText',
       data: event.data || '',
-    } satisfies Patch<T>
+      bubbles: true,
+      cancelable: true,
+    })
 
-    history.future.clear()
-    applyPatch(patch)
+    // Set isComposing to false since composition is ending
+    Object.defineProperty(inputEvent, 'isComposing', {
+      value: false,
+      writable: false,
+    })
 
-    const {
-      data = '',
-      range: { start },
-    } = patch
-
-    select(element, { anchor: start + data.length })
+    event.currentTarget.dispatchEvent(inputEvent)
 
     compositionStartSelection = null
 
