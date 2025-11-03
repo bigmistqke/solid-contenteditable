@@ -431,40 +431,40 @@ function createHistory<T extends string = never>() {
 
 type History<T extends string = never> = ReturnType<typeof createHistory<T>>
 
+const isInsertEventType = (
+  eventType: string,
+): eventType is 'insertCompositionText' | 'insertText' => eventType.startsWith('insert')
+
 function defaultUndo<T extends string = never>(history: History<T>): Array<Patch<T>> {
   const patches: Array<Patch<T>> = []
 
   DEBUG && console.log('defaultUndo - 🔄 called, past length:', history.past.array.length)
 
-  while (history.past.peek()) {
-    const patch = history.past.pop()
-    if (!patch) break
-
+  let patch: Patch<T> | undefined
+  while ((patch = history.past.pop())) {
     DEBUG && console.info('defaultUndo - 📤 Popped patch from past', patch.kind, patch.data)
     patches.push(patch)
 
     // Skip caret movements
-    if (patch.kind === 'caret') continue
+    if (patch.kind === 'caret') {
+      continue
+    }
 
     // Check if we should continue grouping
     const nextPatch = history.past.peek()
-    if (!nextPatch) break
+    if (!nextPatch) {
+      break
+    }
 
     DEBUG && console.info('defaultUndo - 🔍 Next patch', nextPatch.kind, nextPatch.data)
 
-    // Stop grouping logic
-    const shouldStopGrouping =
-      // Different operation types that shouldn't be grouped
-      (patch.kind === 'deleteContentBackward' && nextPatch.kind === 'deleteContentForward') ||
-      (patch.kind === 'deleteContentForward' && nextPatch.kind === 'deleteContentBackward') ||
-      // Space after non-space shouldn't group
-      (patch.data === ' ' && nextPatch.data !== ' ') ||
-      // Non-text operations shouldn't group
-      !['insertText', 'deleteContentBackward', 'deleteContentForward'].includes(patch.kind) ||
-      !['insertText', 'deleteContentBackward', 'deleteContentForward'].includes(nextPatch.kind)
-
-    DEBUG && console.info('defaultUndo - 🛑 Should stop grouping', shouldStopGrouping)
-    if (shouldStopGrouping) break
+    if (
+      patch.kind !== nextPatch.kind &&
+      !(isInsertEventType(patch.kind) && isInsertEventType(nextPatch.kind))
+    ) {
+      DEBUG && console.info('defaultUndo - group patches: ', patch, nextPatch)
+      break
+    }
   }
 
   DEBUG &&
@@ -474,6 +474,7 @@ function defaultUndo<T extends string = never>(history: History<T>): Array<Patch
       'future length now:',
       history.future.array.length,
     )
+
   return patches
 }
 
@@ -497,18 +498,13 @@ function defaultRedo<T extends string = never>(history: History<T>): Array<Patch
     const nextPatch = history.future.peek()
     if (!nextPatch) break
 
-    DEBUG && console.log('defaultRedo - 🔍 Next patch in future:', nextPatch.kind, nextPatch.data)
-
-    // Stop grouping logic (same as undo)
-    const shouldStopGrouping =
-      (patch.kind === 'deleteContentBackward' && nextPatch.kind === 'deleteContentForward') ||
-      (patch.kind === 'deleteContentForward' && nextPatch.kind === 'deleteContentBackward') ||
-      (patch.data === ' ' && nextPatch.data !== ' ') ||
-      !['insertText', 'deleteContentBackward', 'deleteContentForward'].includes(patch.kind) ||
-      !['insertText', 'deleteContentBackward', 'deleteContentForward'].includes(nextPatch.kind)
-
-    DEBUG && console.log('defaultRedo - 🛑 Should stop grouping:', shouldStopGrouping)
-    if (shouldStopGrouping) break
+    if (
+      patch.kind !== nextPatch.kind &&
+      !(isInsertEventType(patch.kind) && isInsertEventType(nextPatch.kind))
+    ) {
+      DEBUG && console.info('defaultRedo - group patches: ', patch, nextPatch)
+      break
+    }
   }
 
   DEBUG &&
@@ -518,6 +514,7 @@ function defaultRedo<T extends string = never>(history: History<T>): Array<Patch
       'past length now:',
       history.past.array.length,
     )
+
   return patches
 }
 
@@ -971,6 +968,13 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
           if (patch.kind === 'caret') continue
 
           applyPatch(patch)
+
+          const {
+            range: { start },
+            data = '',
+          } = patch
+
+          select(element, { anchor: start + data.length })
         }
 
         props.onTextContent?.(textContent())
