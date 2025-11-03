@@ -10,7 +10,9 @@ import {
   splitProps,
 } from 'solid-js'
 
-const isMac = navigator.platform.startsWith('Mac')
+const DEBUG = true
+
+const IS_MAC = navigator.platform.startsWith('Mac')
 
 interface RangeOffsets {
   start: number
@@ -346,23 +348,23 @@ function createHistory<T extends string = never>() {
       },
       pop() {
         const patch = future.pop()
-        console.log('future pop', { patch, future, past })
+        DEBUG && console.info('future pop', { patch, future, past })
         return patch
       },
       peek() {
         const patch = future[future.length - 1]
-        console.log('future peek', { patch, future, past })
+        DEBUG && console.info('future peek', { patch, future, past })
         return patch
       },
       push(patch: Patch<T>) {
-        console.log('future push', { patch, future, past })
+        DEBUG && console.info('future push', { patch, future, past })
         future.push(patch)
       },
     },
     past: {
       pop() {
         const patch = past.pop()
-        console.log('past pop', { patch, future, past })
+        DEBUG && console.info('past pop', { patch, future, past })
         if (patch) {
           future.push(patch)
         }
@@ -370,11 +372,11 @@ function createHistory<T extends string = never>() {
       },
       peek() {
         const patch = past[past.length - 1]
-        console.log('past pop', { patch, future, past })
+        DEBUG && console.info('past pop', { patch, future, past })
         return patch
       },
       push(patch: Patch<T>) {
-        console.log('past push', { patch, future, past })
+        DEBUG && console.info('past push', { patch, future, past })
         past.push(patch)
       },
     },
@@ -413,12 +415,16 @@ function deleteContentForward(source: string, selection: SelectionOffsets): Patc
         : selection.end,
   }
 
-  return {
+  const patch = {
     kind: 'deleteContentForward',
     range,
     selection,
     undo: source.slice(range.start, range.end),
-  }
+  } as const
+
+  DEBUG && console.info('deleteContentForward', source, selection, patch)
+
+  return patch
 }
 
 function deleteContentBackward(source: string, selection: SelectionOffsets): Patch {
@@ -430,12 +436,16 @@ function deleteContentBackward(source: string, selection: SelectionOffsets): Pat
     end: selection.end,
   }
 
-  return {
+  const patch = {
     kind: 'deleteContentBackward',
     range,
     selection,
     undo: source.slice(range.start, range.end),
-  }
+  } as const
+
+  DEBUG && console.info('deleteContentBackward', source, selection, patch)
+
+  return patch
 }
 
 function deleteWordBackward(source: string, selection: SelectionOffsets): Patch {
@@ -447,12 +457,16 @@ function deleteWordBackward(source: string, selection: SelectionOffsets): Patch 
     end: selection.end,
   }
 
-  return {
+  const patch = {
     kind: 'deleteWordBackward',
     range,
     selection,
     undo: source.slice(range.start, range.end),
   }
+
+  DEBUG && console.info('deleteWordBackward', source, selection, patch)
+
+  return patch
 }
 
 function deleteWordForward(source: string, selection: SelectionOffsets): Patch {
@@ -464,12 +478,16 @@ function deleteWordForward(source: string, selection: SelectionOffsets): Patch {
         : selection.end,
   }
 
-  return {
+  const patch = {
     kind: 'deleteWordForward',
     selection,
     range,
     undo: source.slice(range.start, range.end),
-  }
+  } as const
+
+  DEBUG && console.info('deleteWordForward', source, selection, patch)
+
+  return patch
 }
 
 function deleteSoftLineBackward(source: string, selection: SelectionOffsets): Patch {
@@ -487,12 +505,16 @@ function deleteSoftLineBackward(source: string, selection: SelectionOffsets): Pa
     end: selection.end,
   }
 
-  return {
+  const patch = {
     kind: 'deleteSoftLineBackward',
     selection,
     range,
     undo: source.slice(range.start, range.end),
-  }
+  } as const
+
+  DEBUG && console.info('deleteSoftLineBackward', source, selection)
+
+  return patch
 }
 
 function deleteSoftLineForward(source: string, selection: SelectionOffsets): Patch {
@@ -511,12 +533,16 @@ function deleteSoftLineForward(source: string, selection: SelectionOffsets): Pat
     end,
   }
 
-  return {
+  const patch = {
     kind: 'deleteSoftLineForward',
     selection,
     range,
     undo: source.slice(range.start, range.end),
-  }
+  } as const
+
+  DEBUG && console.info('deleteSoftLineForward', source, selection)
+
+  return patch
 }
 
 /**********************************************************************************/
@@ -532,11 +558,10 @@ function createPatchFromInputEvent(
 ): Patch | null {
   const selection = getSelectionOffsets(event.currentTarget)
 
-  console.log('CREATE PATCH FROM INPUT EVENT', event)
+  DEBUG && console.info('createPatchFromInputEvent', event)
 
   switch (event.inputType) {
     case 'insertCompositionText':
-      throw 'yolo'
     case 'insertText': {
       return {
         kind: event.inputType,
@@ -653,7 +678,14 @@ function dispatchUndoEvent(event: KeyboardEvent & { currentTarget: HTMLElement }
 export interface ContentEditableProps<T extends string | never = never>
   extends Omit<
     ComponentProps<'div'>,
-    'children' | 'contenteditable' | 'onBeforeInput' | 'textContent' | 'onInput' | 'style'
+    | 'children'
+    | 'contenteditable'
+    | 'onBeforeInput'
+    | 'textContent'
+    | 'onInput'
+    | 'style'
+    | 'onCompositionStart'
+    | 'onCompositionEnd'
   > {
   /**
    * Add additional key-bindings.
@@ -679,6 +711,8 @@ export interface ContentEditableProps<T extends string | never = never>
    * [see README](https://www.github.com/bigmistqke/solid-contenteditable/#history-strategy).
    */
   historyStrategy?(currentPatch: Patch<T>, nextPatch: Patch<T>): boolean
+  onCompositionStart?: JSX.EventHandler<HTMLDivElement, CompositionEvent>
+  onCompositionEnd?: JSX.EventHandler<HTMLDivElement, CompositionEvent>
   /** Event-callback called whenever `content` is updated */
   onTextContent?: (value: string) => void
   /**
@@ -718,12 +752,14 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       'singleline',
       'style',
       'textContent',
+      'onCompositionEnd',
+      'onCompositionStart',
     ] satisfies Array<keyof Partial<ContentEditableProps>>,
   )
   const [textContent, setTextContent] = createWritable(() => props.textContent)
   const history = createHistory<T>()
   let element: HTMLDivElement = null!
-  let isComposing = false
+  let compositionStartSelection: SelectionOffsets | null = null
 
   // Add an additional newline if the value ends with a newline,
   // otherwise the browser will not display the trailing newline.
@@ -758,7 +794,11 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
   function onBeforeInput(event: InputEvent & { currentTarget: HTMLDivElement }) {
     event.preventDefault()
 
-    console.log('onBeforeInput', event)
+    DEBUG && console.info('onBeforeInput', event)
+
+    if (event.isComposing) {
+      return
+    }
 
     switch (event.inputType) {
       case 'historyUndo': {
@@ -837,6 +877,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
   }
 
   function onKeyDown(event: KeyboardEvent & { currentTarget: HTMLElement }) {
+    DEBUG && console.info('onKeyDown', event)
     if (config.keyBindings) {
       const keyCombo = getKeyComboFromKeyboardEvent(event)
 
@@ -861,6 +902,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       }
     }
 
+    // Update caret instead of creating a new caret history entry
     if (event.key.startsWith('Arrow') || event.key === 'Home' || event.key === 'End') {
       if (history.past.peek()?.kind !== 'caret') {
         const selection = getSelectionOffsets(element)
@@ -874,7 +916,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       return
     }
 
-    if (isMac) {
+    if (IS_MAC) {
       if (event.metaKey) {
         switch (event.key) {
           case 'z':
@@ -927,21 +969,47 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
     )
   }
 
-  function onCompositionStart(event: CompositionEvent & { currentTarget: HTMLElement }) {
-    event.preventDefault()
-    isComposing = true
+  function onCompositionStart(
+    event: CompositionEvent & { currentTarget: HTMLDivElement; target: Element },
+  ) {
+    DEBUG && console.info('onCompositionStart', event)
+
+    compositionStartSelection = getSelectionOffsets(event.currentTarget)
+
+    config.onCompositionStart?.(event)
   }
 
-  function onCompositionUpdate(event: CompositionEvent & { currentTarget: HTMLElement }) {
-    event.preventDefault()
-  }
+  function onCompositionEnd(
+    event: CompositionEvent & { currentTarget: HTMLDivElement; target: Element },
+  ) {
+    DEBUG && console.info('onCompositionEnd', event)
 
-  function onCompositionEnd(event: CompositionEvent & { currentTarget: HTMLElement }) {
-    event.preventDefault()
-    isComposing = false
+    if (!compositionStartSelection) {
+      throw new Error('Expected compositionStartSelection to be defined.')
+    }
 
-    // The compositionend event is followed by an input event with insertCompositionText
-    // So we don't need to manually handle text insertion here
+    // NOTE:  We ignore insertCompositionText in onBeforeInput
+    const patch = {
+      kind: 'insertCompositionText',
+      selection: compositionStartSelection,
+      range: compositionStartSelection,
+      undo: textContent().slice(compositionStartSelection.start, compositionStartSelection.end),
+      data: event.data || '',
+    } satisfies Patch<T>
+
+    history.future.clear()
+    applyPatch(patch)
+
+    const {
+      data = '',
+      range: { start },
+    } = patch
+
+    select(element, { anchor: start + data.length })
+
+    compositionStartSelection = null
+
+    config.onCompositionEnd?.(event)
   }
 
   createEffect(() => {
@@ -970,11 +1038,9 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       aria-multiline={!config.singleline}
       contenteditable={config.editable}
       onBeforeInput={onBeforeInput}
-      onInput={onBeforeInput}
       onKeyDown={onKeyDown}
       onPointerDown={onPointerDown}
       onCompositionStart={onCompositionStart}
-      onCompositionUpdate={onCompositionUpdate}
       onCompositionEnd={onCompositionEnd}
       style={{
         'scrollbar-width': props.singleline ? 'none' : undefined,
