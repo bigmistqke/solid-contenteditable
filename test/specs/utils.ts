@@ -9,29 +9,29 @@ export async function selectAndClear(page: Page, locator: Locator) {
 
 export async function selectWord(page: Page, locator: Locator, wordIndex: number = 0) {
   await locator.click()
-  
+
   // Move to the beginning of the text
   await page.keyboard.press('ControlOrMeta+Home')
-  
+
   // Navigate to the desired word using word-by-word navigation
   for (let i = 0; i < wordIndex; i++) {
     await page.keyboard.press('ControlOrMeta+ArrowRight')
   }
-  
+
   // Select the current word
   await page.keyboard.press('ControlOrMeta+Shift+ArrowRight')
 }
 
 export async function selectLastWord(page: Page, locator: Locator) {
   await locator.click()
-  
+
   // Move to the end of the text
   await page.keyboard.press('End')
-  
+
   // Move backward to the start of the last word (without selection)
   const wordLeftKey = process.platform === 'darwin' ? 'Alt+ArrowLeft' : 'Control+ArrowLeft'
   await page.keyboard.press(wordLeftKey)
-  
+
   // Now select from current position to the end
   await page.keyboard.press('Shift+End')
 }
@@ -326,4 +326,69 @@ export async function endComposition(page: Page, selector: string, data: string 
     },
     { selector, data },
   )
+}
+
+// Get the current caret position in a contenteditable element
+export async function getCaretPosition(page: Page, selector: string): Promise<number> {
+  return await page.evaluate(selector => {
+    const element = document.querySelector(selector) as HTMLElement
+    if (!element) throw new Error(`Element not found: ${selector}`)
+
+    const selection = window.getSelection()
+    if (!selection || selection.rangeCount === 0) return 0
+
+    const range = selection.getRangeAt(0)
+    const preCaretRange = range.cloneRange()
+    preCaretRange.selectNodeContents(element)
+    preCaretRange.setEnd(range.endContainer, range.endOffset)
+
+    // Count the text content length up to the caret
+    let offset = 0
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null)
+
+    let node
+    while ((node = walker.nextNode())) {
+      const textNode = node as Text
+      if (textNode === range.endContainer) {
+        offset += range.endOffset
+        break
+      } else if (preCaretRange.intersectsNode(textNode)) {
+        offset += textNode.textContent?.length || 0
+      }
+    }
+
+    return offset
+  }, selector)
+}
+
+// Perform undo operation
+export async function undo(page: Page, selector: string = '[role="textbox"]') {
+  await page.evaluate(selector => {
+    const element = document.querySelector(selector) as HTMLElement
+    if (!element) throw new Error(`Element not found: ${selector}`)
+
+    element.dispatchEvent(
+      new InputEvent('beforeinput', {
+        inputType: 'historyUndo',
+        bubbles: true,
+        cancelable: true,
+      }),
+    )
+  }, selector)
+}
+
+// Perform redo operation
+export async function redo(page: Page, selector: string = '[role="textbox"]') {
+  await page.evaluate(selector => {
+    const element = document.querySelector(selector) as HTMLElement
+    if (!element) throw new Error(`Element not found: ${selector}`)
+
+    element.dispatchEvent(
+      new InputEvent('beforeinput', {
+        inputType: 'historyRedo',
+        bubbles: true,
+        cancelable: true,
+      }),
+    )
+  }, selector)
 }

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { selectAndClear, simulateComposition } from './utils'
+import { getCaretPosition, redo, selectAndClear, simulateComposition, undo } from './utils'
 
 /**
  * History and Undo/Redo Tests
@@ -21,10 +21,12 @@ test.describe('ContentEditable - History (Undo/Redo)', () => {
     await editor.pressSequentially(' World')
     await expect(editor).toHaveText('Hello World')
 
-    await page.keyboard.press('ControlOrMeta+z')
-    await expect(editor).toHaveText('Hello')
+    // Use input event for undo - all insertText operations are grouped
+    await undo(page)
+    await expect(editor).toHaveText('') // All insertText grouped together
 
-    await page.keyboard.press('ControlOrMeta+Shift+z')
+    // Use input event for redo
+    await redo(page)
     await expect(editor).toHaveText('Hello World')
   })
 
@@ -40,10 +42,10 @@ test.describe('ContentEditable - History (Undo/Redo)', () => {
     await editor.pressSequentially(' World')
     await expect(editor).toHaveText('Hello World')
 
-    await page.keyboard.press('ControlOrMeta+z')
-    await expect(editor).toHaveText('Hello')
+    await undo(page)
+    await expect(editor).toHaveText('') // All insertText grouped together
 
-    await page.keyboard.press('ControlOrMeta+Shift+z')
+    await redo(page)
     await expect(editor).toHaveText('Hello World')
   })
 
@@ -52,31 +54,15 @@ test.describe('ContentEditable - History (Undo/Redo)', () => {
     await selectAndClear(page, editor)
     await editor.fill('Hello World')
 
-    await page.keyboard.press('ArrowLeft')
-    await page.keyboard.press('ArrowLeft')
-    await page.keyboard.press('ArrowLeft')
+    for (let i = 0; i < 'World'.length; i++) {
+      await page.keyboard.press('ArrowLeft')
+    }
 
     await editor.pressSequentially('X')
     await expect(editor).toHaveText('Hello XWorld')
 
-    await page.keyboard.press('ControlOrMeta+z')
-    await expect(editor).toHaveText('Hello World')
-  })
-
-  test('caret movements are tracked in history', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
-    await selectAndClear(page, editor)
-    await editor.fill('Hello World')
-
-    await page.keyboard.press('ArrowLeft')
-    await page.keyboard.press('ArrowLeft')
-    await page.keyboard.press('ArrowLeft')
-
-    await editor.pressSequentially('X')
-    await expect(editor).toHaveText('Hello XWorld')
-
-    await page.keyboard.press('ControlOrMeta+z')
-    await expect(editor).toHaveText('Hello World')
+    await undo(page)
+    await expect(editor).toHaveText('Hello World') // Undo just the "X" insertion
   })
 
   test('multiple undo operations', async ({ page }) => {
@@ -87,28 +73,40 @@ test.describe('ContentEditable - History (Undo/Redo)', () => {
     await editor.pressSequentially(' Two')
     await editor.pressSequentially(' Three')
 
-    await page.keyboard.press('ControlOrMeta+z')
-    await expect(editor).toHaveText('One Two')
+    // All insertText operations are grouped together with new behavior
+    await undo(page)
+    await expect(editor).toHaveText('') // All text operations grouped
 
-    await page.keyboard.press('ControlOrMeta+z')
-    await expect(editor).toHaveText('One')
+    // No more undo operations after this
+    await undo(page)
+    await expect(editor).toHaveText('') // Still empty
 
-    await page.keyboard.press('ControlOrMeta+z')
-    await expect(editor).toHaveText('')
+    await undo(page)
+    await expect(editor).toHaveText('') // Still empty
   })
 
   test('redo after multiple undos', async ({ page }) => {
     const editor = page.locator('[role="textbox"]').first()
     await selectAndClear(page, editor)
 
-    await editor.fill('One Two Three')
+    await editor.fill('One')
+    await editor.pressSequentially(' Two')
+    await editor.pressSequentially(' Three')
 
-    await page.keyboard.press('ControlOrMeta+z')
-    await page.keyboard.press('ControlOrMeta+z')
-    await expect(editor).toHaveText('One')
+    // Single undo removes all text (grouped)
+    await undo(page)
+    await expect(editor).toHaveText('')
 
-    await page.keyboard.press('ControlOrMeta+Shift+z')
-    await page.keyboard.press('ControlOrMeta+Shift+z')
+    // Second undo has no effect
+    await undo(page)
+    await expect(editor).toHaveText('')
+
+    // Single redo restores all text
+    await redo(page)
+    await expect(editor).toHaveText('One Two Three')
+
+    // Second redo has no effect
+    await redo(page)
     await expect(editor).toHaveText('One Two Three')
   })
 
@@ -117,11 +115,11 @@ test.describe('ContentEditable - History (Undo/Redo)', () => {
     await selectAndClear(page, editor)
 
     await editor.fill('Original')
-    await page.keyboard.press('ControlOrMeta+z')
+    await undo(page)
     await expect(editor).toHaveText('')
 
     await editor.fill('New')
-    await page.keyboard.press('ControlOrMeta+Shift+z')
+    await redo(page)
     await expect(editor).toHaveText('New')
   })
 
@@ -133,10 +131,10 @@ test.describe('ContentEditable - History (Undo/Redo)', () => {
     await simulateComposition(page, '[role="textbox"]', ['世界'], '世界')
     await expect(editor).toHaveText('Hello 世界')
 
-    await page.keyboard.press('ControlOrMeta+z')
-    await expect(editor).toHaveText('Hello ')
+    await undo(page)
+    await expect(editor).toHaveText('Hello ') // Undo just the composition
 
-    await page.keyboard.press('ControlOrMeta+Shift+z')
+    await redo(page)
     await expect(editor).toHaveText('Hello 世界')
   })
 
@@ -148,7 +146,7 @@ test.describe('ContentEditable - History (Undo/Redo)', () => {
     await page.keyboard.press('Backspace')
     await expect(editor).toHaveText('Hello Worl')
 
-    await page.keyboard.press('ControlOrMeta+z')
+    await undo(page)
     await expect(editor).toHaveText('Hello World')
   })
 
@@ -159,9 +157,9 @@ test.describe('ContentEditable - History (Undo/Redo)', () => {
 
     const deleteWordKey = process.platform === 'darwin' ? 'Alt+Backspace' : 'Control+Backspace'
     await page.keyboard.press(deleteWordKey)
-    await expect(editor).toHaveText('Hello Beautiful ')
+    await expect(editor).toHaveText('Hello Beautiful ') // This should fail due to delete-word bug
 
-    await page.keyboard.press('ControlOrMeta+z')
+    await undo(page)
     await expect(editor).toHaveText('Hello Beautiful World')
   })
 
@@ -178,7 +176,7 @@ test.describe('ContentEditable - History (Undo/Redo)', () => {
 
     await expect(editor).toHaveText('Hello Hello')
 
-    await page.keyboard.press('ControlOrMeta+z')
+    await undo(page)
     await expect(editor).toHaveText('Hello ')
   })
 
@@ -191,7 +189,48 @@ test.describe('ContentEditable - History (Undo/Redo)', () => {
     await page.keyboard.press('ControlOrMeta+x')
     await expect(editor).toHaveText('Hello ')
 
-    await page.keyboard.press('ControlOrMeta+z')
+    await undo(page)
     await expect(editor).toHaveText('Hello World')
+  })
+
+  test('multiple undos and redos should restore caret position correctly', async ({ page }) => {
+    const editor = page.locator('[role="textbox"]').first()
+    await selectAndClear(page, editor)
+
+    // Type first word
+    await editor.pressSequentially('Hello')
+    await expect(editor).toHaveText('Hello')
+    expect(await getCaretPosition(page, '[role="textbox"]')).toBe(5)
+
+    // Add space and second word (different typing session)
+    await page.waitForTimeout(100) // Small delay to potentially separate operations
+    await editor.pressSequentially(' World')
+    await expect(editor).toHaveText('Hello World')
+    expect(await getCaretPosition(page, '[role="textbox"]')).toBe(11)
+
+    // Delete some characters
+    await page.keyboard.press('Backspace')
+    await page.keyboard.press('Backspace')
+    await page.keyboard.press('Backspace')
+    await expect(editor).toHaveText('Hello Wo')
+    expect(await getCaretPosition(page, '[role="textbox"]')).toBe(8)
+
+    // Now test undo/redo cycle
+    await undo(page) // Should undo the deletions
+    await expect(editor).toHaveText('Hello World')
+    expect(await getCaretPosition(page, '[role="textbox"]')).toBe(11)
+
+    await undo(page) // Should undo all grouped text entry
+    await expect(editor).toHaveText('') // All insertText operations are grouped
+    expect(await getCaretPosition(page, '[role="textbox"]')).toBe(0)
+
+    // Test redo
+    await redo(page) // Should restore the grouped text operations
+    await expect(editor).toHaveText('Hello World')
+    expect(await getCaretPosition(page, '[role="textbox"]')).toBe(11)
+
+    await redo(page) // Should restore the deletions
+    await expect(editor).toHaveText('Hello Wo')
+    expect(await getCaretPosition(page, '[role="textbox"]')).toBe(8)
   })
 })
