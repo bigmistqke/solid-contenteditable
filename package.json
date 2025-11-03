@@ -51,7 +51,8 @@
     "lint": "concurrently pnpm:lint:*",
     "prepublishOnly": "pnpm build",
     "test": "playwright test -c test/playwright.config.ts",
-    "test:ssr": "vitest --mode ssr",
+    "test:json": "playwright test -c test/playwright.config.ts --reporter=json",
+    "test:ui": "pnpm test -- --ui",
     "test:serve": "vite serve test",
     "update-deps": "pnpm up -Li"
   },

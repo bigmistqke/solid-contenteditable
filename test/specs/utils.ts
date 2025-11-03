@@ -7,6 +7,35 @@ export async function selectAndClear(page: Page, locator: Locator) {
   await page.keyboard.press('Delete')
 }
 
+export async function selectWord(page: Page, locator: Locator, wordIndex: number = 0) {
+  await locator.click()
+  
+  // Move to the beginning of the text
+  await page.keyboard.press('ControlOrMeta+Home')
+  
+  // Navigate to the desired word using word-by-word navigation
+  for (let i = 0; i < wordIndex; i++) {
+    await page.keyboard.press('ControlOrMeta+ArrowRight')
+  }
+  
+  // Select the current word
+  await page.keyboard.press('ControlOrMeta+Shift+ArrowRight')
+}
+
+export async function selectLastWord(page: Page, locator: Locator) {
+  await locator.click()
+  
+  // Move to the end of the text
+  await page.keyboard.press('End')
+  
+  // Move backward to the start of the last word (without selection)
+  const wordLeftKey = process.platform === 'darwin' ? 'Alt+ArrowLeft' : 'Control+ArrowLeft'
+  await page.keyboard.press(wordLeftKey)
+  
+  // Now select from current position to the end
+  await page.keyboard.press('Shift+End')
+}
+
 // Utility function to dispatch input events directly to test implementation
 export async function dispatchInputEvent(
   page: Page,
@@ -65,7 +94,7 @@ export async function dispatchInputEvent(
         }
       }
 
-      const event = new InputEvent('input', {
+      const event = new InputEvent('beforeinput', {
         inputType: inputType as any,
         data: options.data,
         bubbles: true,
@@ -162,15 +191,8 @@ export async function simulateComposition(
         }),
       )
 
-      // Dispatch input event to insert the text
-      element.dispatchEvent(
-        new InputEvent('input', {
-          inputType: 'insertCompositionText',
-          data: finalText,
-          bubbles: true,
-          cancelable: true,
-        }),
-      )
+      // Note: No need to dispatch beforeinput event manually
+      // The onCompositionEnd handler will create the beforeinput event automatically
     },
     { selector, updates, finalText },
   )
@@ -298,16 +320,9 @@ export async function endComposition(page: Page, selector: string, data: string 
         }),
       )
 
-      if (data) {
-        element.dispatchEvent(
-          new InputEvent('input', {
-            inputType: 'insertCompositionText',
-            data,
-            bubbles: true,
-            cancelable: true,
-          }),
-        )
-      }
+      // Note: No need to dispatch beforeinput event manually
+      // The onCompositionEnd handler will create the beforeinput event automatically
+      // if data is provided
     },
     { selector, data },
   )
