@@ -1,14 +1,12 @@
 import { expect, test } from '@playwright/test'
-import { selectAndClear } from './utils'
+import { log, selectAndClear, setup } from './utils'
 
 /**
  * Unicode and Grapheme Cluster Tests
  * Tests handling of complex Unicode characters, emoji, and grapheme clusters
  */
 test.describe('ContentEditable - Grapheme Clusters & Unicode', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/')
-  })
+  setup(test)
 
   test('handles complex emoji clusters', async ({ page }) => {
     const editor = page.locator('[role="textbox"]').first()
@@ -56,7 +54,7 @@ test.describe('ContentEditable - Grapheme Clusters & Unicode', () => {
 
   test('handles various Unicode scripts', async ({ page }) => {
     const editor = page.locator('[role="textbox"]').first()
-    
+
     const unicodeTexts = [
       'Héllo Wörld', // Latin with diacritics
       'Привет мир', // Cyrillic
@@ -88,22 +86,25 @@ test.describe('ContentEditable - Grapheme Clusters & Unicode', () => {
     await expect(editor).toHaveText(textWithZWJ)
   })
 
-  test('preserves character clusters during deletion', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
-    await selectAndClear(page, editor)
+  test(
+    'preserves character clusters during deletion',
+    log(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
 
-    const complexEmoji = '👨‍👩‍👧‍👦'
-    await editor.fill(`Hello ${complexEmoji} World`)
+      const complexEmoji = '👨‍👩‍👧‍👦'
+      await editor.fill(`Hello ${complexEmoji} World`)
 
-    await page.keyboard.press('Home')
-    for (let i = 0; i < 6; i++) {
-      await page.keyboard.press('ArrowRight')
-    }
+      await page.keyboard.press('Home')
+      for (let i = 0; i < 6; i++) {
+        await page.keyboard.press('ArrowRight')
+      }
 
-    await page.keyboard.press('Delete')
+      await page.keyboard.press('Delete')
 
-    await expect(editor).toHaveText('Hello World')
-  })
+      await expect(editor).toHaveText('Hello World')
+    }),
+  )
 
   test('handles complex emoji input', async ({ page }) => {
     const editor = page.locator('[role="textbox"]').first()

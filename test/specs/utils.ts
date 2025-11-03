@@ -1,4 +1,69 @@
-import { Locator, Page } from '@playwright/test'
+import {
+  Locator,
+  Page,
+  PlaywrightTestArgs,
+  PlaywrightTestOptions,
+  PlaywrightWorkerArgs,
+  PlaywrightWorkerOptions,
+  TestType,
+} from '@playwright/test'
+
+// Debug flag for Firefox-specific debugging
+const DEBUG = process.env.DEBUG === 'true'
+
+export function setup(
+  test: TestType<
+    PlaywrightTestArgs & PlaywrightTestOptions,
+    PlaywrightWorkerArgs & PlaywrightWorkerOptions
+  >,
+) {
+  test.beforeEach(async ({ page }) => {
+    await page.goto(`/${DEBUG ? '?debug=1' : ''}`)
+  })
+}
+
+// Wrapper function to add debug logging to Firefox tests
+export function log(testFn: ({ page }: { page: Page }) => Promise<void>) {
+  return async ({ page }: { page: Page }) => {
+    if (!DEBUG) {
+      return testFn({ page })
+    }
+
+    const consoleLogs: string[] = []
+
+    page.on('console', async msg => {
+      console.log('message', msg)
+      if (msg.type() === 'info' || msg.type() === 'log') {
+        try {
+          const args = await Promise.all(
+            msg.args().map(arg => arg.jsonValue().catch(() => arg.toString())),
+          )
+          const logText = args.join(' ')
+          if (
+            logText.includes('🎯') ||
+            logText.includes('📍') ||
+            logText.includes('📦') ||
+            logText.includes('🔧')
+          ) {
+            consoleLogs.push(`[${new Date().toISOString()}] ${logText}`)
+          }
+        } catch (error) {
+          // Ignore errors in console log processing
+        }
+      }
+    })
+
+    try {
+      await testFn({ page })
+    } finally {
+      if (consoleLogs.length > 0) {
+        console.log(`\n=== FIREFOX DEBUG LOGS ===`)
+        consoleLogs.forEach(log => console.log(log))
+        console.log(`=== END DEBUG LOGS ===\n`)
+      }
+    }
+  }
+}
 
 // Utility function to select all content and clear a contenteditable element
 export async function selectAndClear(page: Page, locator: Locator) {

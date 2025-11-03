@@ -1,14 +1,12 @@
 import { expect, test } from '@playwright/test'
-import { dispatchBeforeInputEvent, selectAndClear, selectLastWord } from './utils'
+import { dispatchBeforeInputEvent, log, selectAndClear, selectLastWord, setup } from './utils'
 
 /**
  * Input Event Types Tests
  * Tests all beforeinput event types for proper handling
  */
 test.describe('ContentEditable - Input Event Types', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/')
-  })
+  setup(test)
 
   test('insertText input type', async ({ page }) => {
     const editor = page.locator('[role="textbox"]').first()
@@ -29,17 +27,20 @@ test.describe('ContentEditable - Input Event Types', () => {
     await expect(editor).toHaveText('Hello Wor')
   })
 
-  test('deleteContentForward input type', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
-    await selectAndClear(page, editor)
-    await editor.fill('Hello World')
-    await page.keyboard.press('Home')
-    for (let i = 0; i < 5; i++) {
-      await page.keyboard.press('ArrowRight')
-    }
-    await page.keyboard.press('Delete')
-    await expect(editor).toHaveText('HelloWorld')
-  })
+  test(
+    'deleteContentForward input type',
+    log(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
+      await editor.fill('Hello World')
+      await page.keyboard.press('Home')
+      for (let i = 0; i < 5; i++) {
+        await page.keyboard.press('ArrowRight')
+      }
+      await page.keyboard.press('Delete')
+      await expect(editor).toHaveText('HelloWorld')
+    }),
+  )
 
   test('deleteWordBackward input type', async ({ page }) => {
     const editor = page.locator('[role="textbox"]').first()
@@ -52,29 +53,32 @@ test.describe('ContentEditable - Input Event Types', () => {
     await expect(editor).toHaveText('Hello ')
   })
 
-  test('deleteWordForward input type', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
-    await selectAndClear(page, editor)
-    await editor.fill('Hello Beautiful World')
-    await page.keyboard.press('Home')
-    const deleteWordForwardKey = process.platform === 'darwin' ? 'Alt+Delete' : 'Control+Delete'
+  test(
+    'deleteWordForward input type',
+    log(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
+      await editor.fill('Hello Beautiful World')
+      await page.keyboard.press('Home')
+      const deleteWordForwardKey = process.platform === 'darwin' ? 'Alt+Delete' : 'Control+Delete'
 
-    const initialText = await editor.textContent()
-    await page.keyboard.press(deleteWordForwardKey)
-    const afterFirstDelete = await editor.textContent()
+      const initialText = await editor.textContent()
+      await page.keyboard.press(deleteWordForwardKey)
+      const afterFirstDelete = await editor.textContent()
 
-    if (afterFirstDelete === initialText) {
-      await dispatchBeforeInputEvent(page, '[role="textbox"]', 'deleteWordForward')
-      const text = await editor.textContent()
-      expect(text || '').not.toBe('Hello Beautiful World')
-      expect((text || '').startsWith('Beautiful') || (text || '').startsWith(' Beautiful')).toBe(
-        true,
-      )
-    } else {
-      expect(afterFirstDelete || '').not.toBe(initialText || '')
-      expect((afterFirstDelete || '').length).toBeLessThan((initialText || '').length)
-    }
-  })
+      if (afterFirstDelete === initialText) {
+        await dispatchBeforeInputEvent(page, '[role="textbox"]', 'deleteWordForward')
+        const text = await editor.textContent()
+        expect(text || '').not.toBe('Hello Beautiful World')
+        expect((text || '').startsWith('Beautiful') || (text || '').startsWith(' Beautiful')).toBe(
+          true,
+        )
+      } else {
+        expect(afterFirstDelete || '').not.toBe(initialText || '')
+        expect((afterFirstDelete || '').length).toBeLessThan((initialText || '').length)
+      }
+    }),
+  )
 
   test('deleteSoftLineBackward input type', async ({ page }) => {
     const editor = page.locator('[role="textbox"]').first()
@@ -88,18 +92,21 @@ test.describe('ContentEditable - Input Event Types', () => {
     expect((text || '').length).toBeLessThan('Hello World. This is a test.'.length)
   })
 
-  test('deleteSoftLineForward input type', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
-    await selectAndClear(page, editor)
-    await editor.fill('Hello World. This is a test.')
-    await page.keyboard.press('Home')
+  test(
+    'deleteSoftLineForward input type',
+    log(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
+      await editor.fill('Hello World. This is a test.')
+      await page.keyboard.press('Home')
 
-    await dispatchBeforeInputEvent(page, '[role="textbox"]', 'deleteSoftLineForward')
+      await dispatchBeforeInputEvent(page, '[role="textbox"]', 'deleteSoftLineForward')
 
-    const text = await editor.textContent()
-    expect(text || '').not.toBe('Hello World. This is a test.')
-    expect((text || '').length).toBeLessThan('Hello World. This is a test.'.length)
-  })
+      const text = await editor.textContent()
+      expect(text || '').not.toBe('Hello World. This is a test.')
+      expect((text || '').length).toBeLessThan('Hello World. This is a test.'.length)
+    }),
+  )
 
   test('deleteByCut input type', async ({ page }) => {
     const editor = page.locator('[role="textbox"]').first()
@@ -200,16 +207,19 @@ test.describe('ContentEditable - Input Event Types', () => {
     await expect(editor).toHaveText('')
   })
 
-  test('selection deletion with deleteContentForward', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
+  test(
+    'selection deletion with deleteContentForward',
+    log(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
 
-    await selectAndClear(page, editor)
-    await editor.fill('Hello World')
-    await page.keyboard.press('Home')
-    await page.keyboard.press('Shift+End')
-    await page.keyboard.press('Delete')
-    await expect(editor).toHaveText('')
-  })
+      await selectAndClear(page, editor)
+      await editor.fill('Hello World')
+      await page.keyboard.press('Home')
+      await page.keyboard.press('Shift+End')
+      await page.keyboard.press('Delete')
+      await expect(editor).toHaveText('')
+    }),
+  )
 
   test('selection deletion with deleteWordBackward', async ({ page }) => {
     const editor = page.locator('[role="textbox"]').first()

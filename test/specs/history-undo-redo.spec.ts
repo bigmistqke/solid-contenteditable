@@ -1,14 +1,20 @@
 import { expect, test } from '@playwright/test'
-import { getCaretPosition, redo, selectAndClear, simulateComposition, undo } from './utils'
+import {
+  getCaretPosition,
+  log,
+  redo,
+  selectAndClear,
+  setup,
+  simulateComposition,
+  undo,
+} from './utils'
 
 /**
  * History and Undo/Redo Tests
  * Tests undo/redo functionality and history management
  */
 test.describe('ContentEditable - History (Undo/Redo)', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/')
-  })
+  setup(test)
 
   test('basic undo and redo', async ({ page }) => {
     const editor = page.locator('[role="textbox"]').first()
@@ -85,30 +91,33 @@ test.describe('ContentEditable - History (Undo/Redo)', () => {
     await expect(editor).toHaveText('') // Still empty
   })
 
-  test('redo after multiple undos', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
-    await selectAndClear(page, editor)
+  test(
+    'redo after multiple undos',
+    log(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
 
-    await editor.fill('One')
-    await editor.pressSequentially(' Two')
-    await editor.pressSequentially(' Three')
+      await editor.fill('One')
+      await editor.pressSequentially(' Two')
+      await editor.pressSequentially(' Three')
 
-    // Single undo removes all text (grouped)
-    await undo(page)
-    await expect(editor).toHaveText('')
+      // Single undo removes all text (grouped)
+      await undo(page)
+      await expect(editor).toHaveText('')
 
-    // Second undo has no effect
-    await undo(page)
-    await expect(editor).toHaveText('')
+      // Second undo has no effect
+      await undo(page)
+      await expect(editor).toHaveText('')
 
-    // Single redo restores all text
-    await redo(page)
-    await expect(editor).toHaveText('One Two Three')
+      // Single redo restores all text
+      await redo(page)
+      await expect(editor).toHaveText('One Two Three')
 
-    // Second redo has no effect
-    await redo(page)
-    await expect(editor).toHaveText('One Two Three')
-  })
+      // Second redo has no effect
+      await redo(page)
+      await expect(editor).toHaveText('One Two Three')
+    }),
+  )
 
   test('history is cleared after new input', async ({ page }) => {
     const editor = page.locator('[role="textbox"]').first()
@@ -123,20 +132,23 @@ test.describe('ContentEditable - History (Undo/Redo)', () => {
     await expect(editor).toHaveText('New')
   })
 
-  test('composition events integrate with history', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
-    await selectAndClear(page, editor)
+  test(
+    'composition events integrate with history',
+    log(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
 
-    await editor.fill('Hello ')
-    await simulateComposition(page, '[role="textbox"]', ['世界'], '世界')
-    await expect(editor).toHaveText('Hello 世界')
+      await editor.fill('Hello ')
+      await simulateComposition(page, '[role="textbox"]', ['世界'], '世界')
+      await expect(editor).toHaveText('Hello 世界')
 
-    await undo(page)
-    await expect(editor).toHaveText('Hello ') // Undo just the composition
+      await undo(page)
+      await expect(editor).toHaveText('Hello ') // Undo just the composition
 
-    await redo(page)
-    await expect(editor).toHaveText('Hello 世界')
-  })
+      await redo(page)
+      await expect(editor).toHaveText('Hello 世界')
+    }),
+  )
 
   test('deletion operations can be undone', async ({ page }) => {
     const editor = page.locator('[role="textbox"]').first()

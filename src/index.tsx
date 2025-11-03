@@ -10,7 +10,7 @@ import {
   splitProps,
 } from 'solid-js'
 
-const DEBUG = false
+const DEBUG = import.meta.env['DEV'] && new URLSearchParams(window.location.search).get('debug')
 
 const IS_MAC = navigator.platform.startsWith('Mac')
 
@@ -264,9 +264,11 @@ function getSelectionOffsets(element: HTMLElement): SelectionOffsets {
   // and if the element appears to be fully selected, treat it as select-all
   if (clampedAnchor === textLength && clampedFocus === textLength && textLength > 0) {
     const range = selection.getRangeAt(0)
-    if (range.startContainer === range.endContainer && 
-        range.startOffset === 0 && 
-        (range.endOffset === 1 || range.toString().length === textLength)) {
+    if (
+      range.startContainer === range.endContainer &&
+      range.startOffset === 0 &&
+      (range.endOffset === 1 || range.toString().length === textLength)
+    ) {
       // This is likely a select-all that Firefox reported incorrectly
       clampedAnchor = 0
       clampedFocus = textLength
@@ -280,13 +282,17 @@ function getSelectionOffsets(element: HTMLElement): SelectionOffsets {
     focus: clampedFocus,
   }
 
-  DEBUG && console.info('getSelectionOffsets - 📍 Selection calculated', JSON.stringify({
-    result,
-    selectionRangeCount: selection.rangeCount,
-    anchorOffset: selection.anchorOffset,
-    focusOffset: selection.focusOffset,
-    elementTextContent: element.textContent,
-  }))
+  DEBUG &&
+    console.info(
+      'getSelectionOffsets - 📍 Selection calculated',
+      JSON.stringify({
+        result,
+        selectionRangeCount: selection.rangeCount,
+        anchorOffset: selection.anchorOffset,
+        focusOffset: selection.focusOffset,
+        elementTextContent: element.textContent,
+      }),
+    )
 
   return result
 }
@@ -725,13 +731,17 @@ function createPatchFromInputEvent(
 ): Patch | null {
   const selection = getSelectionOffsets(event.currentTarget)
 
-  DEBUG && console.info('createPatchFromInputEvent - 🎯 Creating patch from input', JSON.stringify({
-    inputType: event.inputType,
-    data: event.data,
-    selection,
-    sourceLength: source.length,
-    source,
-  }))
+  DEBUG &&
+    console.info(
+      'createPatchFromInputEvent - 🎯 Creating patch from input',
+      JSON.stringify({
+        inputType: event.inputType,
+        data: event.data,
+        selection,
+        sourceLength: source.length,
+        source,
+      }),
+    )
 
   switch (event.inputType) {
     case 'insertCompositionText':
@@ -743,12 +753,16 @@ function createPatchFromInputEvent(
         undo: source.slice(selection.start, selection.end),
         data: event.data || '',
       }
-      DEBUG && console.info('createPatchFromInputEvent - 📦 Created insertText patch', JSON.stringify({
-        patch,
-        undoText: patch.undo,
-        willReplace: `"${source.slice(selection.start, selection.end)}"`,
-        withData: `"${patch.data}"`,
-      }))
+      DEBUG &&
+        console.info(
+          'createPatchFromInputEvent - 📦 Created insertText patch',
+          JSON.stringify({
+            patch,
+            undoText: patch.undo,
+            willReplace: `"${source.slice(selection.start, selection.end)}"`,
+            withData: `"${patch.data}"`,
+          }),
+        )
       return patch
     }
     case 'deleteContentBackward': {
@@ -954,14 +968,18 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
     const oldValue = textContent()
     const newValue = `${oldValue.slice(0, start)}${data}${oldValue.slice(end)}`
 
-    DEBUG && console.info('applyPatch - 🔧 Applying patch', JSON.stringify({
-      patch,
-      oldValue,
-      newValue,
-      range: { start, end },
-      replacedText: `"${oldValue.slice(start, end)}"`,
-      insertedData: `"${data}"`,
-    }))
+    DEBUG &&
+      console.info(
+        'applyPatch - 🔧 Applying patch',
+        JSON.stringify({
+          patch,
+          oldValue,
+          newValue,
+          range: { start, end },
+          replacedText: `"${oldValue.slice(start, end)}"`,
+          insertedData: `"${data}"`,
+        }),
+      )
 
     setTextContent(newValue)
     props.onTextContent?.(newValue)

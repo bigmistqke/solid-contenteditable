@@ -1,14 +1,12 @@
 import { expect, test } from '@playwright/test'
-import { selectAndClear } from './utils'
+import { selectAndClear, setup } from './utils'
 
 /**
  * Basic ContentEditable Functionality Tests
  * Tests core features: input, deletion, focus, rapid typing
  */
 test.describe('ContentEditable - Basic Functionality', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/')
-  })
+  setup(test)
 
   test('basic text input and output', async ({ page }) => {
     const editor = page.locator('[role="textbox"]').first()

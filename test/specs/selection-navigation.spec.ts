@@ -1,48 +1,55 @@
 import { expect, test } from '@playwright/test'
-import { selectAndClear } from './utils'
+import { log, selectAndClear, setup } from './utils'
 
 /**
  * Selection and Navigation Tests
  * Tests text selection, cursor movement, and navigation functionality
  */
 test.describe('ContentEditable - Selection & Navigation', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/')
-  })
+  setup(test)
 
-  test('arrow key navigation', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
-    await selectAndClear(page, editor)
-    await editor.fill('Hello World')
+  test(
+    'arrow key navigation',
+    log(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
+      await editor.fill('Hello World')
 
-    await page.keyboard.press('Home')
-    await editor.pressSequentially('Hi ')
-    await expect(editor).toHaveText('Hi Hello World')
-  })
+      await page.keyboard.press('Home')
+      await editor.pressSequentially('Hi ')
+      await expect(editor).toHaveText('Hi Hello World')
+    }),
+  )
 
-  test('cursor position is correct after deletion', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
-    await selectAndClear(page, editor)
-    await editor.fill('Hello World')
+  test(
+    'cursor position is correct after deletion',
+    log(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
+      await editor.fill('Hello World')
 
-    await page.keyboard.press('Home')
-    await page.keyboard.press('ArrowRight+ArrowRight+ArrowRight+ArrowRight+ArrowRight')
+      await page.keyboard.press('Home')
+      await page.keyboard.press('ArrowRight+ArrowRight+ArrowRight+ArrowRight+ArrowRight')
 
-    await editor.pressSequentially('X')
-    await expect(editor).toHaveText('HelloX World')
-  })
+      await editor.pressSequentially('X')
+      await expect(editor).toHaveText('HelloX World')
+    }),
+  )
 
-  test('visual cursor position is correct', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
-    await selectAndClear(page, editor)
-    await editor.fill('Hello World')
+  test(
+    'visual cursor position is correct',
+    log(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
+      await editor.fill('Hello World')
 
-    await page.keyboard.press('Home')
-    await page.keyboard.press('ArrowRight+ArrowRight+ArrowRight+ArrowRight+ArrowRight')
+      await page.keyboard.press('Home')
+      await page.keyboard.press('ArrowRight+ArrowRight+ArrowRight+ArrowRight+ArrowRight')
 
-    await editor.pressSequentially('X')
-    await expect(editor).toHaveText('HelloX World')
-  })
+      await editor.pressSequentially('X')
+      await expect(editor).toHaveText('HelloX World')
+    }),
+  )
 
   test('selection works with double-click', async ({ page }) => {
     const editor = page.locator('[role="textbox"]').first()
@@ -105,37 +112,43 @@ test.describe('ContentEditable - Selection & Navigation', () => {
     await expect(editor).toBeFocused()
   })
 
-  test('home and end keys work', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
-    await selectAndClear(page, editor)
-    await editor.fill('Hello World')
+  test(
+    'home and end keys work',
+    log(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
+      await editor.fill('Hello World')
 
-    await page.keyboard.press('Home')
-    await editor.pressSequentially('Start ')
-    await expect(editor).toHaveText('Start Hello World')
+      await page.keyboard.press('Home')
+      await editor.pressSequentially('Start ')
+      await expect(editor).toHaveText('Start Hello World')
 
-    await page.keyboard.press('End')
-    await editor.pressSequentially(' End')
-    await expect(editor).toHaveText('Start Hello World End')
-  })
+      await page.keyboard.press('End')
+      await editor.pressSequentially(' End')
+      await expect(editor).toHaveText('Start Hello World End')
+    }),
+  )
 
-  test('shift+arrow selection works', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
-    await selectAndClear(page, editor)
-    await editor.fill('Hello World')
+  test(
+    'shift+arrow selection works',
+    log(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
+      await editor.fill('Hello World')
 
-    await page.keyboard.press('Shift+Home')
-    await editor.pressSequentially('Goodbye')
-    await expect(editor).toHaveText('Goodbye')
+      await page.keyboard.press('Shift+Home')
+      await editor.pressSequentially('Goodbye')
+      await expect(editor).toHaveText('Goodbye')
 
-    await selectAndClear(page, editor)
-    await editor.fill('Hello World')
+      await selectAndClear(page, editor)
+      await editor.fill('Hello World')
 
-    await page.keyboard.press('Home')
-    await page.keyboard.press('Shift+End')
-    await editor.pressSequentially('Replaced')
-    await expect(editor).toHaveText('Replaced')
-  })
+      await page.keyboard.press('Home')
+      await page.keyboard.press('Shift+End')
+      await editor.pressSequentially('Replaced')
+      await expect(editor).toHaveText('Replaced')
+    }),
+  )
 
   test('ctrl+a selects all text', async ({ page }) => {
     const editor = page.locator('[role="textbox"]').first()
@@ -162,7 +175,7 @@ test.describe('ContentEditable - Selection & Navigation', () => {
   test('handles large text selection', async ({ page }) => {
     const editor = page.locator('[role="textbox"]').first()
     await selectAndClear(page, editor)
-    
+
     const largeText = 'Lorem ipsum '.repeat(100)
     await editor.fill(largeText)
 
@@ -171,21 +184,24 @@ test.describe('ContentEditable - Selection & Navigation', () => {
     await expect(editor).toHaveText('Replaced')
   })
 
-  test('selection persists across operations', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
-    await selectAndClear(page, editor)
-    await editor.fill('Hello World')
+  test(
+    'selection persists across operations',
+    log(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
+      await editor.fill('Hello World')
 
-    await page.dblclick('[role="textbox"]', { position: { x: 30, y: 10 } })
-    
-    // Copy selected word
-    await page.keyboard.press('ControlOrMeta+c')
-    
-    // Move to end and paste
-    await page.keyboard.press('End')
-    await editor.pressSequentially(' ')
-    await page.keyboard.press('ControlOrMeta+v')
-    
-    await expect(editor).toHaveText('Hello World Hello')
-  })
+      await page.dblclick('[role="textbox"]', { position: { x: 30, y: 10 } })
+
+      // Copy selected word
+      await page.keyboard.press('ControlOrMeta+c')
+
+      // Move to end and paste
+      await page.keyboard.press('End')
+      await editor.pressSequentially(' ')
+      await page.keyboard.press('ControlOrMeta+v')
+
+      await expect(editor).toHaveText('Hello World Hello')
+    }),
+  )
 })
