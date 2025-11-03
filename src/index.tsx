@@ -699,10 +699,12 @@ function deleteSoftLineBackward(source: string, selection: SelectionOffsets): Pa
 function deleteSoftLineForward(source: string, selection: SelectionOffsets): Patch {
   let end = selection.end
 
-  if (isNewLine(source[end + 1])) {
+  // If the current character is a newline, delete just that
+  if (isNewLine(source[end])) {
     end += 1
   } else {
-    while (end < source.length && !isNewLine(source[end + 1])) {
+    // Find the end of the current line
+    while (end < source.length && !isNewLine(source[end])) {
       end += 1
     }
   }
