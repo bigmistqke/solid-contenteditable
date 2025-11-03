@@ -11,23 +11,28 @@ import {
 // Debug flag for Firefox-specific debugging
 const DEBUG = process.env.DEBUG === 'true'
 
+type TestArgs = PlaywrightTestArgs &
+  PlaywrightTestOptions &
+  PlaywrightWorkerArgs &
+  PlaywrightWorkerOptions
+
 type TestBody = (
-  args: PlaywrightTestArgs & PlaywrightTestOptions & PlaywrightWorkerArgs & PlaywrightWorkerOptions,
+  args: Pick<TestArgs, 'page' | 'browserName' | 'browser' | 'context' | 'request'>,
   testInfo: TestInfo,
 ) => Promise<void> | void
 
 // Wrapper function to add debug logging to Firefox tests
-export function setup(testFn: TestBody): TestBody {
-  return async (args, info) => {
-    await args.page.goto(`/${DEBUG ? '?debug=1' : ''}`)
+export function setup(testFn: TestBody) {
+  return async ({ page, browserName, browser, context, request }: TestArgs, info: TestInfo) => {
+    await page.goto(`/${DEBUG ? '?debug=1' : ''}`)
 
     if (!DEBUG) {
-      return testFn(args, info)
+      return testFn({ page, browserName, browser, context, request }, info)
     }
 
     const consoleLogs: string[] = []
 
-    args.page.on('console', async msg => {
+    page.on('console', async msg => {
       console.log('message', msg)
       if (msg.type() === 'info' || msg.type() === 'log') {
         try {
@@ -50,7 +55,7 @@ export function setup(testFn: TestBody): TestBody {
     })
 
     try {
-      await testFn(args, info)
+      return await testFn({ page, browserName, browser, context, request }, info)
     } finally {
       if (consoleLogs.length > 0) {
         console.log(`\n=== FIREFOX DEBUG LOGS ===`)
