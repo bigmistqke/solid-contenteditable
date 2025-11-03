@@ -321,7 +321,7 @@ function getKeyComboFromKeyboardEvent(event: KeyboardEvent) {
   const meta = event.metaKey ? 'Meta+' : ''
   const keyCombo = ctrl + alt + shift + meta + event.code.replace('Key', '')
 
-  DEBUG && console.info('getKeyComboFromKeyboardEvent', event, keyCombo)
+  DEBUG && console.info('getKeyComboFromKeyboardEvent - 🎹 Processing keyboard event', event, keyCombo)
 }
 
 const reversedModifiers = modifiers.toReversed()
@@ -346,28 +346,30 @@ function createHistory<T extends string = never>() {
 
   return {
     future: {
+      array: future,
       clear() {
         future.length = 0
       },
       pop() {
         const patch = future.pop()
-        DEBUG && console.info('future pop', { patch, future, past })
+        DEBUG && console.info('future.pop - 📤 Popping patch from future', { patch, future, past })
         return patch
       },
       peek() {
         const patch = future[future.length - 1]
-        DEBUG && console.info('future peek', { patch, future, past })
+        DEBUG && console.info('future.peek - 👀 Peeking at future patch', { patch, future, past })
         return patch
       },
       push(patch: Patch<T>) {
-        DEBUG && console.info('future push', { patch, future, past })
+        DEBUG && console.info('future.push - 📥 Pushing patch to future', { patch, future, past })
         future.push(patch)
       },
     },
     past: {
+      array: past,
       pop() {
         const patch = past.pop()
-        DEBUG && console.info('past pop', { patch, future, past })
+        DEBUG && console.info('past.pop - 📤 Popping patch from past', { patch, future, past })
         if (patch) {
           future.push(patch)
         }
@@ -375,11 +377,11 @@ function createHistory<T extends string = never>() {
       },
       peek() {
         const patch = past[past.length - 1]
-        DEBUG && console.info('past pop', { patch, future, past })
+        DEBUG && console.info('past.peek - 👀 Peeking at past patch', { patch, future, past })
         return patch
       },
       push(patch: Patch<T>) {
-        DEBUG && console.info('past push', { patch, future, past })
+        DEBUG && console.info('past.push - 📥 Pushing patch to past', { patch, future, past })
         past.push(patch)
       },
     },
@@ -391,10 +393,13 @@ type History<T extends string = never> = ReturnType<typeof createHistory<T>>
 function defaultUndo<T extends string = never>(history: History<T>): Array<Patch<T>> {
   const patches: Array<Patch<T>> = []
 
+  DEBUG && console.log('defaultUndo - 🔄 called, past length:', history.past.array.length)
+
   while (history.past.peek()) {
     const patch = history.past.pop()
     if (!patch) break
 
+    DEBUG && console.info('defaultUndo - 📤 Popped patch from past', patch.kind, patch.data)
     patches.push(patch)
 
     // Skip caret movements
@@ -403,6 +408,8 @@ function defaultUndo<T extends string = never>(history: History<T>): Array<Patch
     // Check if we should continue grouping
     const nextPatch = history.past.peek()
     if (!nextPatch) break
+
+    DEBUG && console.info('defaultUndo - 🔍 Next patch', nextPatch.kind, nextPatch.data)
 
     // Stop grouping logic
     const shouldStopGrouping =
@@ -415,19 +422,31 @@ function defaultUndo<T extends string = never>(history: History<T>): Array<Patch
       !['insertText', 'deleteContentBackward', 'deleteContentForward'].includes(patch.kind) ||
       !['insertText', 'deleteContentBackward', 'deleteContentForward'].includes(nextPatch.kind)
 
+    DEBUG && console.info('defaultUndo - 🛑 Should stop grouping', shouldStopGrouping)
     if (shouldStopGrouping) break
   }
 
+  DEBUG &&
+    console.info(
+      'defaultUndo - ✅ Returning patches',
+      patches.length,
+      'future length now:',
+      history.future.array.length,
+    )
   return patches
 }
 
 function defaultRedo<T extends string = never>(history: History<T>): Array<Patch<T>> {
   const patches: Array<Patch<T>> = []
 
+  DEBUG &&
+    console.info('defaultRedo - 🔄 Called with future length', history.future.array.length)
+
   while (history.future.peek()) {
     const patch = history.future.pop()
     if (!patch) break
 
+    DEBUG && console.log('defaultRedo - 📤 Popped patch from future:', patch.kind, patch.data)
     patches.push(patch)
     history.past.push(patch)
 
@@ -438,6 +457,8 @@ function defaultRedo<T extends string = never>(history: History<T>): Array<Patch
     const nextPatch = history.future.peek()
     if (!nextPatch) break
 
+    DEBUG && console.log('defaultRedo - 🔍 Next patch in future:', nextPatch.kind, nextPatch.data)
+
     // Stop grouping logic (same as undo)
     const shouldStopGrouping =
       (patch.kind === 'deleteContentBackward' && nextPatch.kind === 'deleteContentForward') ||
@@ -446,9 +467,17 @@ function defaultRedo<T extends string = never>(history: History<T>): Array<Patch
       !['insertText', 'deleteContentBackward', 'deleteContentForward'].includes(patch.kind) ||
       !['insertText', 'deleteContentBackward', 'deleteContentForward'].includes(nextPatch.kind)
 
+    DEBUG && console.log('defaultRedo - 🛑 Should stop grouping:', shouldStopGrouping)
     if (shouldStopGrouping) break
   }
 
+  DEBUG &&
+    console.log(
+      'defaultRedo - ✅ defaultRedo returning patches:',
+      patches.length,
+      'past length now:',
+      history.past.array.length,
+    )
   return patches
 }
 
@@ -474,7 +503,7 @@ function deleteContentForward(source: string, selection: SelectionOffsets): Patc
     undo: source.slice(range.start, range.end),
   } as const
 
-  DEBUG && console.info('deleteContentForward', source, selection, patch)
+  DEBUG && console.info('deleteContentForward - ➡️ Deleting content forward', source, selection, patch)
 
   return patch
 }
@@ -495,7 +524,7 @@ function deleteContentBackward(source: string, selection: SelectionOffsets): Pat
     undo: source.slice(range.start, range.end),
   } as const
 
-  DEBUG && console.info('deleteContentBackward', source, selection, patch)
+  DEBUG && console.info('deleteContentBackward - ⬅️ Deleting content backward', source, selection, patch)
 
   return patch
 }
@@ -516,7 +545,7 @@ function deleteWordBackward(source: string, selection: SelectionOffsets): Patch 
     undo: source.slice(range.start, range.end),
   } as const
 
-  DEBUG && console.info('deleteWordBackward', source, selection, patch)
+  DEBUG && console.info('deleteWordBackward - ⏪ Deleting word backward', source, selection, patch)
 
   return patch
 }
@@ -537,7 +566,7 @@ function deleteWordForward(source: string, selection: SelectionOffsets): Patch {
     undo: source.slice(range.start, range.end),
   } as const
 
-  DEBUG && console.info('deleteWordForward', source, selection, patch)
+  DEBUG && console.info('deleteWordForward - ⏩ Deleting word forward', source, selection, patch)
 
   return patch
 }
@@ -564,7 +593,7 @@ function deleteSoftLineBackward(source: string, selection: SelectionOffsets): Pa
     undo: source.slice(range.start, range.end),
   } as const
 
-  DEBUG && console.info('deleteSoftLineBackward', source, selection)
+  DEBUG && console.info('deleteSoftLineBackward - 📍 Deleting to line start', source, selection, patch)
 
   return patch
 }
@@ -592,7 +621,7 @@ function deleteSoftLineForward(source: string, selection: SelectionOffsets): Pat
     undo: source.slice(range.start, range.end),
   } as const
 
-  DEBUG && console.info('deleteSoftLineForward', source, selection)
+  DEBUG && console.info('deleteSoftLineForward - 📍 Deleting to line end', source, selection, patch)
 
   return patch
 }
@@ -610,7 +639,7 @@ function createPatchFromInputEvent(
 ): Patch | null {
   const selection = getSelectionOffsets(event.currentTarget)
 
-  DEBUG && console.info('createPatchFromInputEvent', event)
+  DEBUG && console.info('createPatchFromInputEvent - 🎯 Creating patch from input', event)
 
   switch (event.inputType) {
     case 'insertCompositionText':
@@ -860,7 +889,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
   function onBeforeInput(event: InputEvent & { currentTarget: HTMLDivElement }) {
     event.preventDefault()
 
-    DEBUG && console.info('onBeforeInput', event)
+    DEBUG && console.info('onBeforeInput - 📝 Processing input event', event)
 
     if (event.isComposing) {
       return
@@ -938,7 +967,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
   }
 
   function onKeyDown(event: KeyboardEvent & { currentTarget: HTMLElement }) {
-    DEBUG && console.info('onKeyDown', event)
+    DEBUG && console.info('onKeyDown - ⌨️ Key pressed', event)
 
     if (config.keyBindings) {
       const keyCombo = getKeyComboFromKeyboardEvent(event)
@@ -1040,7 +1069,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
   function onCompositionStart(
     event: CompositionEvent & { currentTarget: HTMLDivElement; target: Element },
   ) {
-    DEBUG && console.info('onCompositionStart', event)
+    DEBUG && console.info('onCompositionStart - 🈶 Starting composition', event)
 
     compositionStartSelection = getSelectionOffsets(event.currentTarget)
 
@@ -1050,7 +1079,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
   function onCompositionEnd(
     event: CompositionEvent & { currentTarget: HTMLDivElement; target: Element },
   ) {
-    DEBUG && console.info('onCompositionEnd', event)
+    DEBUG && console.info('onCompositionEnd - 🈚 Ending composition', event)
 
     if (!compositionStartSelection) {
       throw new Error('Expected compositionStartSelection to be defined.')
