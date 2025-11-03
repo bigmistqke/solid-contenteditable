@@ -238,6 +238,117 @@ export async function dispatchBeforeInputEvent(
         })
       }
 
+      // Mock getTargetRanges() to return appropriate range for the input type
+      Object.defineProperty(event, 'getTargetRanges', {
+        value: () => {
+          const selection = window.getSelection()
+          if (!selection || selection.rangeCount === 0) {
+            return []
+          }
+
+          const range = selection.getRangeAt(0)
+          
+          // For soft line deletion operations, calculate the line boundaries
+          if (inputType === 'deleteSoftLineBackward' || inputType === 'deleteSoftLineForward') {
+            const newRange = document.createRange()
+            const textContent = element.textContent || ''
+            
+            // Find current cursor position in text
+            let currentPos = 0
+            const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null)
+            let textNode
+            while ((textNode = walker.nextNode())) {
+              if (textNode === range.startContainer) {
+                currentPos += range.startOffset
+                break
+              } else {
+                currentPos += textNode.textContent?.length || 0
+              }
+            }
+            
+            // Find line boundaries (for soft line, treat whole element as one line if no line breaks)
+            const lineStart = textContent.lastIndexOf('\n', currentPos - 1) + 1
+            const lineEnd = textContent.indexOf('\n', currentPos)
+            const actualLineEnd = lineEnd === -1 ? textContent.length : lineEnd
+            
+            if (inputType === 'deleteSoftLineBackward') {
+              // Delete from current position back to start of line
+              const startPos = lineStart
+              const endPos = currentPos
+              
+              // Convert back to DOM positions
+              let offset = 0
+              const startWalker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null)
+              let startNode, startOffset = 0
+              while ((startNode = startWalker.nextNode())) {
+                const nodeLength = startNode.textContent?.length || 0
+                if (offset + nodeLength >= startPos) {
+                  startOffset = startPos - offset
+                  break
+                }
+                offset += nodeLength
+              }
+              
+              offset = 0
+              const endWalker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null)
+              let endNode, endOffset = 0
+              while ((endNode = endWalker.nextNode())) {
+                const nodeLength = endNode.textContent?.length || 0
+                if (offset + nodeLength >= endPos) {
+                  endOffset = endPos - offset
+                  break
+                }
+                offset += nodeLength
+              }
+              
+              if (startNode && endNode) {
+                newRange.setStart(startNode, startOffset)
+                newRange.setEnd(endNode, endOffset)
+              }
+            } else if (inputType === 'deleteSoftLineForward') {
+              // Delete from current position to end of line
+              const startPos = currentPos
+              const endPos = actualLineEnd
+              
+              // Convert back to DOM positions
+              let offset = 0
+              const startWalker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null)
+              let startNode, startOffset = 0
+              while ((startNode = startWalker.nextNode())) {
+                const nodeLength = startNode.textContent?.length || 0
+                if (offset + nodeLength >= startPos) {
+                  startOffset = startPos - offset
+                  break
+                }
+                offset += nodeLength
+              }
+              
+              offset = 0
+              const endWalker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null)
+              let endNode, endOffset = 0
+              while ((endNode = endWalker.nextNode())) {
+                const nodeLength = endNode.textContent?.length || 0
+                if (offset + nodeLength >= endPos) {
+                  endOffset = endPos - offset
+                  break
+                }
+                offset += nodeLength
+              }
+              
+              if (startNode && endNode) {
+                newRange.setStart(startNode, startOffset)
+                newRange.setEnd(endNode, endOffset)
+              }
+            }
+            
+            return [newRange]
+          }
+          
+          // For other input types, return current selection
+          return [range]
+        },
+      })
+
       element.dispatchEvent(event)
     },
     { selector, inputType, options },
