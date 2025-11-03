@@ -730,6 +730,11 @@ function createPatchFromInputEvent(
   event: InputEvent & { currentTarget: HTMLElement },
   source: string,
   singleline: boolean,
+  compositionSession?: {
+    startText: string
+    startSelection: SelectionOffsets
+    updates: string[]
+  } | null,
 ): Patch | null {
   const selection = getSelectionOffsets(event.currentTarget)
 
@@ -750,13 +755,77 @@ function createPatchFromInputEvent(
       // For insertCompositionText (Android autocomplete), use getTargetRanges() if available
       // to get the exact range the browser intends to replace
       let targetRange = selection
+      let hasValidTargetRanges = false
+      
       if (event.getTargetRanges) {
         const targetRanges = event.getTargetRanges()
+        
+        DEBUG &&
+          console.info(
+            'insertCompositionText - 🎯 Analyzing target ranges',
+            JSON.stringify({
+              targetRangesLength: targetRanges.length,
+              targetRanges: targetRanges.map(range => ({
+                startContainer: range.startContainer.nodeName,
+                startOffset: range.startOffset,
+                endContainer: range.endContainer.nodeName,
+                endOffset: range.endOffset,
+                text: range.toString(),
+              })),
+              compositionData: event.data,
+              isComposing: event.isComposing,
+              currentSelection: selection,
+              sourceText: source,
+            }),
+          )
+        
         if (targetRanges.length > 0) {
-          const domRange = targetRanges[0]
-          const start = getTextOffset(event.currentTarget, domRange.startContainer, domRange.startOffset)
+          const domRange = targetRanges[0]!
+          const start = getTextOffset(
+            event.currentTarget,
+            domRange.startContainer,
+            domRange.startOffset,
+          )
           const end = getTextOffset(event.currentTarget, domRange.endContainer, domRange.endOffset)
           targetRange = { start, end, anchor: start, focus: end }
+          hasValidTargetRanges = true
+          
+          DEBUG &&
+            console.info(
+              'insertCompositionText - ✅ Using valid target range',
+              JSON.stringify({
+                originalRange: { start, end },
+                willReplace: `"${source.slice(start, end)}"`,
+                withData: `"${event.data}"`,
+              }),
+            )
+        } else {
+          // Fallback: when getTargetRanges() is empty (common on Android),
+          // we need to analyze the composition session to determine the right approach
+          
+          // Track this composition update
+          if (compositionSession && event.data) {
+            compositionSession.updates.push(event.data)
+          }
+          
+          DEBUG &&
+            console.info(
+              'insertCompositionText - 🔍 Empty target ranges analysis',
+              JSON.stringify({
+                compositionData: event.data,
+                currentText: source,
+                currentSelection: selection,
+                compositionSession,
+                analysis: compositionSession ? {
+                  textGrowthSinceStart: source.length - compositionSession.startText.length,
+                  expectedGrowthFromData: event.data ? event.data.length - (source.length - compositionSession.startSelection.start) : 0,
+                  looksLikeAutocomplete: event.data ? event.data.length > (source.length - compositionSession.startSelection.start) + 2 : false
+                } : 'no session tracked'
+              }),
+            )
+          
+          // Use current selection as the target range (this is the standard fallback)
+          targetRange = selection
         }
       }
 
@@ -767,6 +836,7 @@ function createPatchFromInputEvent(
         undo: source.slice(targetRange.start, targetRange.end),
         data: event.data || '',
       }
+      
       DEBUG &&
         console.info(
           'createPatchFromInputEvent - 📦 Created insertCompositionText patch',
@@ -775,7 +845,8 @@ function createPatchFromInputEvent(
             undoText: patch.undo,
             willReplace: `"${source.slice(targetRange.start, targetRange.end)}"`,
             withData: `"${patch.data}"`,
-            targetRanges: event.getTargetRanges?.() || 'not available',
+            hasValidTargetRanges,
+            patchBehavior: hasValidTargetRanges ? 'REPLACE_RANGE' : 'INSERT_AT_CURSOR',
           }),
         )
       return patch
@@ -975,6 +1046,11 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
   const history = createHistory<T>()
   let element: HTMLDivElement = null!
   let compositionStartSelection: SelectionOffsets | null = null
+  let compositionSession: {
+    startText: string
+    startSelection: SelectionOffsets
+    updates: string[]
+  } | null = null
 
   // Add an additional newline if the value ends with a newline,
   // otherwise the browser will not display the trailing newline.
@@ -1087,7 +1163,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
         break
       }
       default: {
-        const patch = createPatchFromInputEvent(event, textContent(), config.singleline)
+        const patch = createPatchFromInputEvent(event, textContent(), config.singleline, compositionSession)
 
         if (patch) {
           history.future.clear()
@@ -1213,10 +1289,25 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       target: Element
     },
   ) {
-    DEBUG && console.info('onCompositionStart - 🈶 Starting composition', event)
-
     // Store the selection for use in onCompositionEnd
     compositionStartSelection = getSelectionOffsets(event.currentTarget)
+    
+    // Track composition session
+    compositionSession = {
+      startText: textContent(),
+      startSelection: compositionStartSelection,
+      updates: []
+    }
+
+    DEBUG && console.info('onCompositionStart - 🈶 Starting composition', JSON.stringify({
+      eventData: event.data,
+      eventType: event.type,
+      isTrusted: event.isTrusted,
+      compositionStartSelection,
+      currentTextContent: textContent(),
+      elementTextContent: event.currentTarget.textContent,
+      compositionSession,
+    }))
 
     config.onCompositionStart?.(event)
   }
@@ -1227,10 +1318,50 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       target: Element
     },
   ) {
-    DEBUG && console.info('onCompositionEnd - 🈚 Ending composition', event)
-
     if (!compositionStartSelection) {
       throw new Error('Expected compositionStartSelection to be defined.')
+    }
+
+    const currentSelection = getSelectionOffsets(event.currentTarget)
+    const currentText = textContent()
+    const elementText = event.currentTarget.textContent || ''
+
+    DEBUG && console.info('onCompositionEnd - 🈚 Ending composition', JSON.stringify({
+      eventData: event.data,
+      eventType: event.type,
+      isTrusted: event.isTrusted,
+      compositionStartSelection,
+      currentSelection,
+      currentTextContent: currentText,
+      elementTextContent: elementText,
+      textContentChanged: currentText !== elementText,
+      selectionMoved: JSON.stringify(compositionStartSelection) !== JSON.stringify(currentSelection),
+    }))
+
+    // CRITICAL FIX: If the browser has already modified the DOM during composition,
+    // sync our internal state with the DOM BEFORE dispatching insertCompositionText
+    if (currentText !== elementText) {
+      DEBUG && console.info('onCompositionEnd - 🔄 Syncing internal state with DOM', JSON.stringify({
+        oldInternalState: currentText,
+        newDOMState: elementText,
+        selectionBeforeSync: currentSelection,
+        action: 'Updating internal textContent to match DOM'
+      }))
+      
+      // Preserve the selection through the state update
+      const selectionToPreserve = currentSelection
+      setTextContent(elementText)
+      props.onTextContent?.(elementText)
+      
+      // Restore the selection after state update
+      select(element, {
+        anchor: selectionToPreserve.start,
+        focus: selectionToPreserve.focus,
+      })
+      
+      DEBUG && console.info('onCompositionEnd - 🎯 Restored selection after sync', JSON.stringify({
+        restoredSelection: selectionToPreserve
+      }))
     }
 
     // If there was selected text, the browser has already deleted it during composition
@@ -1254,15 +1385,24 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       props.onTextContent?.(newValue)
     }
 
-    // Set the selection to where the composition text should be inserted
-    select(element, {
-      anchor: compositionStartSelection.start,
-      focus: compositionStartSelection.start,
-    })
+    // Set the selection to the current position after composition
+    // (Only if we didn't already restore it during state sync)
+    if (currentText === elementText) {
+      const finalSelection = getSelectionOffsets(event.currentTarget)
+      select(element, {
+        anchor: finalSelection.start,
+        focus: finalSelection.focus,
+      })
+    }
 
     // Only dispatch beforeinput event if there's actual composition data
-    // This prevents unwanted autocomplete insertion when user dismisses composition
-    if (event.data) {
+    // AND the browser hasn't already applied the changes during composition
+    if (event.data && currentText === elementText) {
+      DEBUG && console.info('onCompositionEnd - 📤 Dispatching insertCompositionText', JSON.stringify({
+        reason: 'Browser has not yet applied composition changes',
+        data: event.data
+      }))
+      
       event.currentTarget.dispatchEvent(
         new InputEvent('beforeinput', {
           inputType: 'insertCompositionText',
@@ -1271,9 +1411,16 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
           cancelable: true,
         }),
       )
+    } else if (event.data && currentText !== elementText) {
+      DEBUG && console.info('onCompositionEnd - ⏭️ Skipping insertCompositionText dispatch', JSON.stringify({
+        reason: 'Browser already applied changes during composition',
+        data: event.data,
+        changes: 'DOM state already synced to internal state'
+      }))
     }
 
     compositionStartSelection = null
+    compositionSession = null
 
     config.onCompositionEnd?.(event)
   }
