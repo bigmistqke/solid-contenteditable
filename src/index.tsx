@@ -58,7 +58,23 @@ export type Patch<T = never> = {
 
 const isNewLine = (char?: string) => char === '\n'
 
-const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+// TODO: replace with createSignal when solid 2.0
+function createWritable<T>(fn: () => T) {
+  const signal = createMemo(() => createSignal(fn()))
+  const get = () => signal()[0]()
+  const set = (v: any) => signal()[1](v)
+  return [get, set] as ReturnType<typeof createSignal<T>>
+}
+
+/**********************************************************************************/
+/*                                                                                */
+/*                                 Segmenter Utils                                */
+/*                                                                                */
+/**********************************************************************************/
+
+const graphemeSegmenter = new Intl.Segmenter(undefined, {
+  granularity: 'grapheme',
+})
 const wordSegmenter = new Intl.Segmenter(undefined, { granularity: 'word' })
 
 function getGraphemeSegments(text: string) {
@@ -129,12 +145,8 @@ function getNextWordBoundary(text: string, position: number): number {
 }
 
 function getPreviousWordBoundary(text: string, position: number): number {
-  const segments = getWordSegments(text)
-
   // Find the previous word boundary before the current position
-  for (let i = segments.length - 1; i >= 0; i--) {
-    const segment = segments[i]
-
+  for (const segment of getWordSegments(text)) {
     // Skip if this segment is at or after our position
     if (segment.index >= position) continue
 
@@ -154,14 +166,6 @@ function getPreviousWordBoundary(text: string, position: number): number {
   }
 
   return 0
-}
-
-// TODO: replace with createSignal when solid 2.0
-function createWritable<T>(fn: () => T) {
-  const signal = createMemo(() => createSignal(fn()))
-  const get = () => signal()[0]()
-  const set = (v: any) => signal()[1](v)
-  return [get, set] as ReturnType<typeof createSignal<T>>
 }
 
 /**********************************************************************************/
@@ -193,6 +197,50 @@ function getTextOffset(element: HTMLElement, targetNode: Node, targetOffset: num
   // If target node not found, return the offset anyway (shouldn't happen in practice)
   return offset + targetOffset
 }
+
+function getNodeAndOffsetAtIndex(element: HTMLElement, index: number) {
+  // Traverse all text nodes in order
+  let currentOffset = 0
+
+  for (const textNode of iterateTextNodes(element)) {
+    const textLength = textNode.textContent?.length || 0
+
+    if (currentOffset + textLength >= index) {
+      const nodeOffset = index - currentOffset
+      return {
+        node: textNode,
+        offset: nodeOffset,
+      }
+    }
+    currentOffset += textLength
+  }
+
+  // If no text node found and index is 0, we need to handle empty containers
+  if (index === 0) {
+    // Find the deepest element that could contain text
+    let deepest: Element | ChildNode = element
+    while (deepest.firstChild && deepest.firstChild.nodeType === Node.ELEMENT_NODE) {
+      deepest = deepest.firstChild
+    }
+
+    // Create an empty text node if needed
+    if (deepest.childNodes.length === 0) {
+      const emptyText = document.createTextNode('')
+      deepest.appendChild(emptyText)
+      return { node: emptyText, offset: 0 }
+    }
+
+    return { node: deepest, offset: 0 }
+  }
+
+  throw new Error(`Could not find text node at index ${index}`)
+}
+
+/**********************************************************************************/
+/*                                                                                */
+/*                                 Selection Utils                                */
+/*                                                                                */
+/**********************************************************************************/
 
 function getSelectionOffsets(element: HTMLElement): SelectionOffsets {
   const selection = document.getSelection()
@@ -267,44 +315,6 @@ function select(element: HTMLElement, { anchor, focus }: { anchor: number; focus
   }
 }
 
-function getNodeAndOffsetAtIndex(element: HTMLElement, index: number) {
-  // Traverse all text nodes in order
-  let currentOffset = 0
-
-  for (const textNode of iterateTextNodes(element)) {
-    const textLength = textNode.textContent?.length || 0
-
-    if (currentOffset + textLength >= index) {
-      const nodeOffset = index - currentOffset
-      return {
-        node: textNode,
-        offset: nodeOffset,
-      }
-    }
-    currentOffset += textLength
-  }
-
-  // If no text node found and index is 0, we need to handle empty containers
-  if (index === 0) {
-    // Find the deepest element that could contain text
-    let deepest: Element | ChildNode = element
-    while (deepest.firstChild && deepest.firstChild.nodeType === Node.ELEMENT_NODE) {
-      deepest = deepest.firstChild
-    }
-
-    // Create an empty text node if needed
-    if (deepest.childNodes.length === 0) {
-      const emptyText = document.createTextNode('')
-      deepest.appendChild(emptyText)
-      return { node: emptyText, offset: 0 }
-    }
-
-    return { node: deepest, offset: 0 }
-  }
-
-  throw new Error(`Could not find text node at index ${index}`)
-}
-
 /**********************************************************************************/
 /*                                                                                */
 /*                                 Key Combo Utils                                */
@@ -321,7 +331,8 @@ function getKeyComboFromKeyboardEvent(event: KeyboardEvent) {
   const meta = event.metaKey ? 'Meta+' : ''
   const keyCombo = ctrl + alt + shift + meta + event.code.replace('Key', '')
 
-  DEBUG && console.info('getKeyComboFromKeyboardEvent - 🎹 Processing keyboard event', event, keyCombo)
+  DEBUG &&
+    console.info('getKeyComboFromKeyboardEvent - 🎹 Processing keyboard event', event, keyCombo)
 }
 
 const reversedModifiers = modifiers.toReversed()
@@ -352,16 +363,31 @@ function createHistory<T extends string = never>() {
       },
       pop() {
         const patch = future.pop()
-        DEBUG && console.info('future.pop - 📤 Popping patch from future', { patch, future, past })
+        DEBUG &&
+          console.info('future.pop - 📤 Popping patch from future', {
+            patch,
+            future,
+            past,
+          })
         return patch
       },
       peek() {
         const patch = future[future.length - 1]
-        DEBUG && console.info('future.peek - 👀 Peeking at future patch', { patch, future, past })
+        DEBUG &&
+          console.info('future.peek - 👀 Peeking at future patch', {
+            patch,
+            future,
+            past,
+          })
         return patch
       },
       push(patch: Patch<T>) {
-        DEBUG && console.info('future.push - 📥 Pushing patch to future', { patch, future, past })
+        DEBUG &&
+          console.info('future.push - 📥 Pushing patch to future', {
+            patch,
+            future,
+            past,
+          })
         future.push(patch)
       },
     },
@@ -369,7 +395,12 @@ function createHistory<T extends string = never>() {
       array: past,
       pop() {
         const patch = past.pop()
-        DEBUG && console.info('past.pop - 📤 Popping patch from past', { patch, future, past })
+        DEBUG &&
+          console.info('past.pop - 📤 Popping patch from past', {
+            patch,
+            future,
+            past,
+          })
         if (patch) {
           future.push(patch)
         }
@@ -377,11 +408,21 @@ function createHistory<T extends string = never>() {
       },
       peek() {
         const patch = past[past.length - 1]
-        DEBUG && console.info('past.peek - 👀 Peeking at past patch', { patch, future, past })
+        DEBUG &&
+          console.info('past.peek - 👀 Peeking at past patch', {
+            patch,
+            future,
+            past,
+          })
         return patch
       },
       push(patch: Patch<T>) {
-        DEBUG && console.info('past.push - 📥 Pushing patch to past', { patch, future, past })
+        DEBUG &&
+          console.info('past.push - 📥 Pushing patch to past', {
+            patch,
+            future,
+            past,
+          })
         past.push(patch)
       },
     },
@@ -439,8 +480,7 @@ function defaultUndo<T extends string = never>(history: History<T>): Array<Patch
 function defaultRedo<T extends string = never>(history: History<T>): Array<Patch<T>> {
   const patches: Array<Patch<T>> = []
 
-  DEBUG &&
-    console.info('defaultRedo - 🔄 Called with future length', history.future.array.length)
+  DEBUG && console.info('defaultRedo - 🔄 Called with future length', history.future.array.length)
 
   while (history.future.peek()) {
     const patch = history.future.pop()
@@ -481,6 +521,28 @@ function defaultRedo<T extends string = never>(history: History<T>): Array<Patch
   return patches
 }
 
+function dispatchRedoEvent(event: KeyboardEvent & { currentTarget: HTMLElement }) {
+  event.preventDefault()
+  event.currentTarget.dispatchEvent(
+    new InputEvent('beforeinput', {
+      inputType: 'historyRedo',
+      bubbles: true,
+      cancelable: true,
+    }),
+  )
+}
+
+function dispatchUndoEvent(event: KeyboardEvent & { currentTarget: HTMLElement }) {
+  event.preventDefault()
+  event.currentTarget.dispatchEvent(
+    new InputEvent('beforeinput', {
+      inputType: 'historyUndo',
+      bubbles: true,
+      cancelable: true,
+    }),
+  )
+}
+
 /**********************************************************************************/
 /*                                                                                */
 /*                                   Patch Utils                                  */
@@ -503,7 +565,8 @@ function deleteContentForward(source: string, selection: SelectionOffsets): Patc
     undo: source.slice(range.start, range.end),
   } as const
 
-  DEBUG && console.info('deleteContentForward - ➡️ Deleting content forward', source, selection, patch)
+  DEBUG &&
+    console.info('deleteContentForward - ➡️ Deleting content forward', source, selection, patch)
 
   return patch
 }
@@ -524,7 +587,8 @@ function deleteContentBackward(source: string, selection: SelectionOffsets): Pat
     undo: source.slice(range.start, range.end),
   } as const
 
-  DEBUG && console.info('deleteContentBackward - ⬅️ Deleting content backward', source, selection, patch)
+  DEBUG &&
+    console.info('deleteContentBackward - ⬅️ Deleting content backward', source, selection, patch)
 
   return patch
 }
@@ -593,7 +657,8 @@ function deleteSoftLineBackward(source: string, selection: SelectionOffsets): Pa
     undo: source.slice(range.start, range.end),
   } as const
 
-  DEBUG && console.info('deleteSoftLineBackward - 📍 Deleting to line start', source, selection, patch)
+  DEBUG &&
+    console.info('deleteSoftLineBackward - 📍 Deleting to line start', source, selection, patch)
 
   return patch
 }
@@ -625,12 +690,6 @@ function deleteSoftLineForward(source: string, selection: SelectionOffsets): Pat
 
   return patch
 }
-
-/**********************************************************************************/
-/*                                                                                */
-/*                             Create Patch From Event                            */
-/*                                                                                */
-/**********************************************************************************/
 
 function createPatchFromInputEvent(
   event: InputEvent & { currentTarget: HTMLElement },
@@ -720,34 +779,6 @@ function createPatchFromInputEvent(
     default:
       throw `Unsupported inputType: ${event.inputType}`
   }
-}
-
-/**********************************************************************************/
-/*                                                                                */
-/*                             Dispatch History Event                             */
-/*                                                                                */
-/**********************************************************************************/
-
-function dispatchRedoEvent(event: KeyboardEvent & { currentTarget: HTMLElement }) {
-  event.preventDefault()
-  event.currentTarget.dispatchEvent(
-    new InputEvent('beforeinput', {
-      inputType: 'historyRedo',
-      bubbles: true,
-      cancelable: true,
-    }),
-  )
-}
-
-function dispatchUndoEvent(event: KeyboardEvent & { currentTarget: HTMLElement }) {
-  event.preventDefault()
-  event.currentTarget.dispatchEvent(
-    new InputEvent('beforeinput', {
-      inputType: 'historyUndo',
-      bubbles: true,
-      cancelable: true,
-    }),
-  )
 }
 
 /**********************************************************************************/
@@ -1067,17 +1098,43 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
   }
 
   function onCompositionStart(
-    event: CompositionEvent & { currentTarget: HTMLDivElement; target: Element },
+    event: CompositionEvent & {
+      currentTarget: HTMLDivElement
+      target: Element
+    },
   ) {
     DEBUG && console.info('onCompositionStart - 🈶 Starting composition', event)
 
     compositionStartSelection = getSelectionOffsets(event.currentTarget)
 
+    // If there's selected text, create a deletion patch since the browser will delete it
+    if (compositionStartSelection.start !== compositionStartSelection.end) {
+      const deletionPatch: Patch = {
+        kind: 'deleteContentBackward',
+        range: compositionStartSelection,
+        selection: compositionStartSelection,
+        undo: textContent().slice(compositionStartSelection.start, compositionStartSelection.end),
+      }
+
+      history.past.push(deletionPatch)
+      history.future.clear()
+
+      // Update our internal state to match what the browser will do
+      const newValue =
+        textContent().slice(0, compositionStartSelection.start) +
+        textContent().slice(compositionStartSelection.end)
+      setTextContent(newValue)
+      props.onTextContent?.(newValue)
+    }
+
     config.onCompositionStart?.(event)
   }
 
   function onCompositionEnd(
-    event: CompositionEvent & { currentTarget: HTMLDivElement; target: Element },
+    event: CompositionEvent & {
+      currentTarget: HTMLDivElement
+      target: Element
+    },
   ) {
     DEBUG && console.info('onCompositionEnd - 🈚 Ending composition', event)
 
@@ -1085,37 +1142,22 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       throw new Error('Expected compositionStartSelection to be defined.')
     }
 
-    // During composition, the browser has already:
-    // 1. Removed any selected text
-    // 2. Inserted the composed text
-    // 3. Positioned the cursor
-    // We need to sync our state with the browser's changes
-    
-    const currentText = event.currentTarget.textContent || ''
-    const previousText = textContent()
-    
-    // Create a patch for history based on what actually happened
-    const patch: Patch = {
-      kind: 'insertCompositionText',
-      data: event.data || '',
-      range: compositionStartSelection,
-      selection: compositionStartSelection,
-      undo: previousText.slice(compositionStartSelection.start, compositionStartSelection.end),
-    }
-    
-    history.past.push(patch)
-    history.future.clear()
-    
-    // Sync our state with the browser's state
-    setTextContent(currentText)
-    props.onTextContent?.(currentText)
-    
-    // Position the caret after the composed text
-    const composedTextLength = event.data?.length || 0
-    const newCaretPosition = compositionStartSelection.start + composedTextLength
-    
-    select(element, { anchor: newCaretPosition })
-    
+    // Temporarily set the selection to the adjusted position
+    select(element, {
+      anchor: compositionStartSelection.start,
+      focus: compositionStartSelection.start,
+    })
+
+    // Dispatch beforeinput event to go through normal input handling
+    event.currentTarget.dispatchEvent(
+      new InputEvent('beforeinput', {
+        inputType: 'insertCompositionText',
+        data: event.data || '',
+        bubbles: true,
+        cancelable: true,
+      }),
+    )
+
     compositionStartSelection = null
 
     config.onCompositionEnd?.(event)
@@ -1141,7 +1183,6 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
   })
 
   return (
-    // biome-ignore lint/a11y/useSemanticElements: <explanation: we are building a custom contenteditable>
     <div
       ref={element}
       role="textbox"
