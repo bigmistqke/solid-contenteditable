@@ -287,7 +287,7 @@ function getNodeAndOffsetAtIndex(element: HTMLElement, index: number) {
   // If no text node found and index is 0, we need to handle empty containers
   if (index === 0) {
     // Find the deepest element that could contain text
-    let deepest = element
+    let deepest: Element | ChildNode = element
     while (deepest.firstChild && deepest.firstChild.nodeType === Node.ELEMENT_NODE) {
       deepest = deepest.firstChild
     }
@@ -338,6 +338,8 @@ function normalizeKeyCombo(keyCombo: string) {
 /*                                                                                */
 /**********************************************************************************/
 
+type HistoryHandler<T extends string> = (history: History<T>) => Array<Patch<T>>
+
 function createHistory<T extends string = never>() {
   let past: Array<Patch<T>> = []
   let future: Array<Patch<T>> = []
@@ -384,21 +386,70 @@ function createHistory<T extends string = never>() {
   }
 }
 
-function defaultHistoryStrategy(currentPatch: Patch<string>, nextPatch: Patch<string>) {
-  if (
-    (currentPatch.kind === 'deleteContentBackward' && nextPatch.kind === 'deleteContentForward') ||
-    (currentPatch.kind === 'deleteContentForward' && nextPatch.kind === 'deleteContentBackward')
-  ) {
-    return false
+type History<T extends string = never> = ReturnType<typeof createHistory<T>>
+
+function defaultUndo<T extends string = never>(history: History<T>): Array<Patch<T>> {
+  const patches: Array<Patch<T>> = []
+
+  while (history.past.peek()) {
+    const patch = history.past.pop()
+    if (!patch) break
+
+    patches.push(patch)
+
+    // Skip caret movements
+    if (patch.kind === 'caret') continue
+
+    // Check if we should continue grouping
+    const nextPatch = history.past.peek()
+    if (!nextPatch) break
+
+    // Stop grouping logic
+    const shouldStopGrouping =
+      // Different operation types that shouldn't be grouped
+      (patch.kind === 'deleteContentBackward' && nextPatch.kind === 'deleteContentForward') ||
+      (patch.kind === 'deleteContentForward' && nextPatch.kind === 'deleteContentBackward') ||
+      // Space after non-space shouldn't group
+      (patch.data === ' ' && nextPatch.data !== ' ') ||
+      // Non-text operations shouldn't group
+      !['insertText', 'deleteContentBackward', 'deleteContentForward'].includes(patch.kind) ||
+      !['insertText', 'deleteContentBackward', 'deleteContentForward'].includes(nextPatch.kind)
+
+    if (shouldStopGrouping) break
   }
 
-  const relevantKinds = ['insertText', 'deleteContentBackward', 'deleteContentForward']
-  const result =
-    relevantKinds.includes(currentPatch.kind) &&
-    relevantKinds.includes(nextPatch.kind) &&
-    !(currentPatch.data === ' ' && nextPatch.data !== ' ')
+  return patches
+}
 
-  return result
+function defaultRedo<T extends string = never>(history: History<T>): Array<Patch<T>> {
+  const patches: Array<Patch<T>> = []
+
+  while (history.future.peek()) {
+    const patch = history.future.pop()
+    if (!patch) break
+
+    patches.push(patch)
+    history.past.push(patch)
+
+    // Skip caret movements
+    if (patch.kind === 'caret') continue
+
+    // Check if we should continue grouping
+    const nextPatch = history.future.peek()
+    if (!nextPatch) break
+
+    // Stop grouping logic (same as undo)
+    const shouldStopGrouping =
+      (patch.kind === 'deleteContentBackward' && nextPatch.kind === 'deleteContentForward') ||
+      (patch.kind === 'deleteContentForward' && nextPatch.kind === 'deleteContentBackward') ||
+      (patch.data === ' ' && nextPatch.data !== ' ') ||
+      !['insertText', 'deleteContentBackward', 'deleteContentForward'].includes(patch.kind) ||
+      !['insertText', 'deleteContentBackward', 'deleteContentForward'].includes(nextPatch.kind)
+
+    if (shouldStopGrouping) break
+  }
+
+  return patches
 }
 
 /**********************************************************************************/
@@ -463,7 +514,7 @@ function deleteWordBackward(source: string, selection: SelectionOffsets): Patch 
     range,
     selection,
     undo: source.slice(range.start, range.end),
-  }
+  } as const
 
   DEBUG && console.info('deleteWordBackward', source, selection, patch)
 
@@ -687,6 +738,8 @@ export interface ContentEditableProps<T extends string | never = never>
     | 'style'
     | 'onCompositionStart'
     | 'onCompositionEnd'
+    | 'onUndo'
+    | 'onRedo'
   > {
   /**
    * Add additional key-bindings.
@@ -707,11 +760,21 @@ export interface ContentEditableProps<T extends string | never = never>
   /** If contentEditable is editable or not. Defaults to `true`. */
   editable?: boolean
   /**
-   * Callback deciding if history entries should be concatenated when undoing/redoing history.
+   * Callback to handle undo operations.
+   * If not provided, uses the default undo behavior.
    *
-   * [see README](https://www.github.com/bigmistqke/solid-contenteditable/#history-strategy).
+   * @param history - The history object with past and future stacks
+   * @returns Array of patches that should be undone (applied in reverse)
    */
-  historyStrategy?(currentPatch: Patch<T>, nextPatch: Patch<T>): boolean
+  onUndo?: HistoryHandler<T>
+  /**
+   * Callback to handle redo operations.
+   * If not provided, uses the default redo behavior.
+   *
+   * @param history - The history object with past and future stacks
+   * @returns Array of patches that should be redone (applied forward)
+   */
+  onRedo?: HistoryHandler<T>
   onCompositionStart?: JSX.EventHandler<HTMLDivElement, CompositionEvent>
   onCompositionEnd?: JSX.EventHandler<HTMLDivElement, CompositionEvent>
   /** Event-callback called whenever `content` is updated */
@@ -740,14 +803,16 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
         spellcheck: false,
         editable: true,
         singleline: false,
-        historyStrategy: defaultHistoryStrategy,
-      } satisfies Partial<ContentEditableProps>,
+        onRedo: defaultRedo as HistoryHandler<T>,
+        onUndo: defaultUndo as HistoryHandler<T>,
+      },
       props,
     ),
     [
       'render',
       'editable',
-      'historyStrategy',
+      'onUndo',
+      'onRedo',
       'onTextContent',
       'keyBindings',
       'singleline',
@@ -803,12 +868,17 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
 
     switch (event.inputType) {
       case 'historyUndo': {
-        while (true) {
-          const patch = history.past.pop()
+        // Get patches to undo using custom handler or default
+        const patches = config.onUndo(history)
 
-          if (!patch) return
+        // Apply undo for each patch
+        let lastSelection: SelectionOffsets | undefined
 
-          if (patch.kind === 'caret') continue
+        for (const patch of patches) {
+          if (patch.kind === 'caret') {
+            lastSelection = patch.selection
+            continue
+          }
 
           const {
             data = '',
@@ -821,39 +891,29 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
             value => `${value.slice(0, start)}${undo}${value.slice(start + data.length)}`,
           )
 
-          select(element, selection)
-
-          props.onTextContent?.(textContent())
-
-          const nextPatch = history.past.peek()
-          if (!nextPatch) return
-
-          if (!config.historyStrategy(patch, nextPatch)) return
+          lastSelection = selection
         }
+
+        // Restore selection from last non-caret patch
+        if (lastSelection) {
+          select(element, lastSelection)
+        }
+
+        props.onTextContent?.(textContent())
         break
       }
       case 'historyRedo': {
-        while (true) {
-          const patch = history.future.pop()
+        // Get patches to redo using custom handler or default
+        const patches = config.onRedo(history)
 
-          if (!patch) return
-
-          applyPatch(patch)
-
+        // Apply redo for each patch
+        for (const patch of patches) {
           if (patch.kind === 'caret') continue
 
-          const {
-            range: { start },
-            data = '',
-          } = patch
-
-          select(element, { anchor: start + data.length })
-
-          const nextPatch = history.future.peek()
-          if (!nextPatch) return
-
-          if (!config.historyStrategy(patch, nextPatch)) return
+          applyPatch(patch)
         }
+
+        props.onTextContent?.(textContent())
         break
       }
       default: {
@@ -882,9 +942,15 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
 
     if (config.keyBindings) {
       const keyCombo = getKeyComboFromKeyboardEvent(event)
+      const keybindings = normalizedKeyBindings()
 
-      if (keyCombo in normalizedKeyBindings()) {
-        const patch = normalizedKeyBindings()[keyCombo]!({
+      if (keyCombo && keyCombo in keybindings) {
+        const createPatch = keybindings[keyCombo]
+        if (!createPatch) {
+          throw new Error(`Expected keybindgings[${keyCombo}] to be defined.`)
+        }
+
+        const patch = createPatch({
           textContent: textContent(),
           range: getSelectionOffsets(event.currentTarget),
           event,
@@ -1034,9 +1100,11 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
   })
 
   return (
+    // biome-ignore lint/a11y/useSemanticElements: <explanation: we are building a custom contenteditable>
     <div
       ref={element}
       role="textbox"
+      tabIndex={0}
       aria-multiline={!config.singleline}
       contenteditable={config.editable}
       onBeforeInput={onBeforeInput}
