@@ -702,7 +702,7 @@ function createPatchFromInputEvent(
 function dispatchRedoEvent(event: KeyboardEvent & { currentTarget: HTMLElement }) {
   event.preventDefault()
   event.currentTarget.dispatchEvent(
-    new InputEvent('input', {
+    new InputEvent('beforeinput', {
       inputType: 'historyRedo',
       bubbles: true,
       cancelable: true,
@@ -713,7 +713,7 @@ function dispatchRedoEvent(event: KeyboardEvent & { currentTarget: HTMLElement }
 function dispatchUndoEvent(event: KeyboardEvent & { currentTarget: HTMLElement }) {
   event.preventDefault()
   event.currentTarget.dispatchEvent(
-    new InputEvent('input', {
+    new InputEvent('beforeinput', {
       inputType: 'historyUndo',
       bubbles: true,
       cancelable: true,
