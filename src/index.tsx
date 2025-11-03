@@ -122,10 +122,8 @@ function getWordSegments(text: string) {
 }
 
 function getNextWordBoundary(text: string, position: number): number {
-  const segments = getWordSegments(text)
-
   // Find the next word boundary after the current position
-  for (const segment of segments) {
+  for (const segment of getWordSegments(text)) {
     // Skip if we haven't reached our position yet
     if (segment.index + segment.segment.length <= position) continue
 
@@ -145,27 +143,29 @@ function getNextWordBoundary(text: string, position: number): number {
 }
 
 function getPreviousWordBoundary(text: string, position: number): number {
-  // Find the previous word boundary before the current position
-  for (const segment of getWordSegments(text)) {
-    // Skip if this segment is at or after our position
-    if (segment.index >= position) continue
+  let lastWordStart = 0
 
-    // If this segment ends before our position and is a word, return its start
-    if (segment.isWordLike && segment.index + segment.segment.length <= position) {
-      return segment.index
+  for (const segment of getWordSegments(text)) {
+    // If we've reached or passed our position
+    if (segment.index >= position) {
+      break
     }
 
-    // If we're inside this segment and it's a word, return its start
-    if (
-      segment.isWordLike &&
-      segment.index < position &&
-      segment.index + segment.segment.length > position
-    ) {
-      return segment.index
+    // If this is a word segment that starts before our position
+    if (segment.isWordLike) {
+      const segmentEnd = segment.index + segment.segment.length
+
+      // If we're at the end of this word or beyond it, this is our candidate
+      if (segmentEnd <= position) {
+        lastWordStart = segment.index
+      } else if (segment.index < position) {
+        // We're inside this word, so return its start
+        return segment.index
+      }
     }
   }
 
-  return 0
+  return lastWordStart
 }
 
 /**********************************************************************************/
