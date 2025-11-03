@@ -10,7 +10,7 @@ import {
   splitProps,
 } from 'solid-js'
 
-const DEBUG = true
+const DEBUG = false
 
 const IS_MAC = navigator.platform.startsWith('Mac')
 
@@ -246,6 +246,7 @@ function getSelectionOffsets(element: HTMLElement): SelectionOffsets {
   const selection = document.getSelection()
 
   if (!selection || selection.rangeCount === 0) {
+    DEBUG && console.info('getSelectionOffsets - ❌ No selection found')
     return { start: 0, end: 0, anchor: 0, focus: 0 }
   }
 
@@ -253,12 +254,41 @@ function getSelectionOffsets(element: HTMLElement): SelectionOffsets {
   const anchor = getTextOffset(element, selection.anchorNode!, selection.anchorOffset)
   const focus = getTextOffset(element, selection.focusNode!, selection.focusOffset)
 
-  return {
-    start: Math.min(anchor, focus),
-    end: Math.max(anchor, focus),
-    anchor,
-    focus,
+  // Firefox fix: clamp selection offsets to actual text length
+  const textLength = element.textContent?.length || 0
+  let clampedAnchor = Math.min(anchor, textLength)
+  let clampedFocus = Math.min(focus, textLength)
+
+  // Firefox-specific fix: detect when Ctrl+A causes incorrect offset calculation
+  // If both offsets are at the end of text but the raw offsets suggest a different selection,
+  // and if the element appears to be fully selected, treat it as select-all
+  if (clampedAnchor === textLength && clampedFocus === textLength && textLength > 0) {
+    const range = selection.getRangeAt(0)
+    if (range.startContainer === range.endContainer && 
+        range.startOffset === 0 && 
+        (range.endOffset === 1 || range.toString().length === textLength)) {
+      // This is likely a select-all that Firefox reported incorrectly
+      clampedAnchor = 0
+      clampedFocus = textLength
+    }
   }
+
+  const result = {
+    start: Math.min(clampedAnchor, clampedFocus),
+    end: Math.max(clampedAnchor, clampedFocus),
+    anchor: clampedAnchor,
+    focus: clampedFocus,
+  }
+
+  DEBUG && console.info('getSelectionOffsets - 📍 Selection calculated', JSON.stringify({
+    result,
+    selectionRangeCount: selection.rangeCount,
+    anchorOffset: selection.anchorOffset,
+    focusOffset: selection.focusOffset,
+    elementTextContent: element.textContent,
+  }))
+
+  return result
 }
 
 function select(element: HTMLElement, { anchor, focus }: { anchor: number; focus?: number }) {
@@ -695,18 +725,31 @@ function createPatchFromInputEvent(
 ): Patch | null {
   const selection = getSelectionOffsets(event.currentTarget)
 
-  DEBUG && console.info('createPatchFromInputEvent - 🎯 Creating patch from input', event)
+  DEBUG && console.info('createPatchFromInputEvent - 🎯 Creating patch from input', JSON.stringify({
+    inputType: event.inputType,
+    data: event.data,
+    selection,
+    sourceLength: source.length,
+    source,
+  }))
 
   switch (event.inputType) {
     case 'insertCompositionText':
     case 'insertText': {
-      return {
+      const patch = {
         kind: event.inputType,
         selection,
         range: selection,
         undo: source.slice(selection.start, selection.end),
         data: event.data || '',
       }
+      DEBUG && console.info('createPatchFromInputEvent - 📦 Created insertText patch', JSON.stringify({
+        patch,
+        undoText: patch.undo,
+        willReplace: `"${source.slice(selection.start, selection.end)}"`,
+        withData: `"${patch.data}"`,
+      }))
+      return patch
     }
     case 'deleteContentBackward': {
       return deleteContentBackward(source, selection)
@@ -908,7 +951,17 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       range: { start, end },
     } = patch
 
-    const newValue = `${textContent().slice(0, start)}${data}${textContent().slice(end)}`
+    const oldValue = textContent()
+    const newValue = `${oldValue.slice(0, start)}${data}${oldValue.slice(end)}`
+
+    DEBUG && console.info('applyPatch - 🔧 Applying patch', JSON.stringify({
+      patch,
+      oldValue,
+      newValue,
+      range: { start, end },
+      replacedText: `"${oldValue.slice(start, end)}"`,
+      insertedData: `"${data}"`,
+    }))
 
     setTextContent(newValue)
     props.onTextContent?.(newValue)
