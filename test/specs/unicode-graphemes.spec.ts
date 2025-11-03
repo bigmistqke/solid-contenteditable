@@ -27,7 +27,7 @@ test.describe('ContentEditable - Grapheme Clusters & Unicode', () => {
       const complexEmoji = '👨‍👩‍👧‍👦'
       await editor.fill(`Hello ${complexEmoji} World`)
 
-      await moveCaretToEnd(page, editor)
+      await moveCaretToEnd(editor)
       for (let i = 0; i < 6; i++) {
         await page.keyboard.press('ArrowLeft')
       }

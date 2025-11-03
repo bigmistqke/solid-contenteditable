@@ -92,7 +92,7 @@ export async function selectLastWord(page: Page, locator: Locator) {
   await locator.click()
 
   // Move to the end of the text
-  await moveCaretToEnd(page, locator)
+  await moveCaretToEnd(locator)
 
   // Move backward to the start of the last word (without selection)
   const wordLeftKey = process.platform === 'darwin' ? 'Alt+ArrowLeft' : 'Control+ArrowLeft'
@@ -472,12 +472,34 @@ export async function moveCaretToStart(locator: Locator) {
 }
 
 // Move caret to the end of the text
-export async function moveCaretToEnd(page: Page, locator: Locator) {
-  // Focus the element first
-  await locator.focus()
-  // Select all and collapse to end
-  await locator.selectText()
-  await page.keyboard.press('ArrowRight')
+export async function moveCaretToEnd(locator: Locator) {
+  // Use evaluate to programmatically set caret position
+  await locator.evaluate((element: HTMLElement) => {
+    const selection = window.getSelection()
+    if (selection) {
+      selection.removeAllRanges()
+      const range = document.createRange()
+
+      // Find the last text node or use the element itself
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null)
+      let lastTextNode: Node = element
+      let node
+      while ((node = walker.nextNode())) {
+        lastTextNode = node
+      }
+
+      if (lastTextNode.nodeType === Node.TEXT_NODE) {
+        const textLength = lastTextNode.textContent?.length || 0
+        range.setStart(lastTextNode, textLength)
+        range.setEnd(lastTextNode, textLength)
+      } else {
+        range.setStart(element, element.childNodes.length)
+        range.setEnd(element, element.childNodes.length)
+      }
+
+      selection.addRange(range)
+    }
+  })
 }
 
 // Select all text in the element
@@ -489,7 +511,7 @@ export async function selectAll(page: Page, locator: Locator) {
 // Perform undo operation
 export async function undo(page: Page, selector: string = '[role="textbox"]') {
   await page.evaluate(selector => {
-    const element = document.querySelector(selector) as HTMLElement
+    const element = document.querySelector(selector)
     if (!element) throw new Error(`Element not found: ${selector}`)
 
     element.dispatchEvent(
@@ -505,7 +527,7 @@ export async function undo(page: Page, selector: string = '[role="textbox"]') {
 // Perform redo operation
 export async function redo(page: Page, selector: string = '[role="textbox"]') {
   await page.evaluate(selector => {
-    const element = document.querySelector(selector) as HTMLElement
+    const element = document.querySelector(selector)
     if (!element) throw new Error(`Element not found: ${selector}`)
 
     element.dispatchEvent(
