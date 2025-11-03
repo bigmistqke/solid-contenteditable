@@ -8,48 +8,6 @@
 
 textual contenteditable 🔥 by solid-js
 
-## Testing
-
-This library includes comprehensive tests covering:
-- **W3C Input Events compliance**: 12/49 input types supported (24% coverage)
-- **International character support**: Latin, CJK, Arabic, Hebrew, emoji, and complex grapheme clusters  
-- **Special characters**: Including the problematic backtick and other edge cases
-- **Real browser testing**: Using Puppeteer with headless Chrome
-- **Performance validation**: Rapid typing and large text handling
-
-### Running Tests
-
-```bash
-# All tests (recommended)
-pnpm test
-
-# Unit tests only (W3C compliance analysis)
-pnpm test:unit
-
-# Browser tests only (real contenteditable behavior)
-pnpm test:browser
-
-# Cross-browser E2E tests
-pnpm test:e2e
-```
-
-### Test Coverage
-
-**✅ Supported Input Types:**
-- `insertText`, `insertLineBreak`, `insertParagraph`
-- `deleteContentBackward`, `deleteContentForward` 
-- `deleteWordBackward`, `deleteWordForward`
-- `deleteSoftLineBackward`, `deleteSoftLineForward`
-- `insertFromPaste`, `deleteByCut`
-
-**🚀 Character Sets Tested:**
-- Special characters: `` `~!@#$%^&*()_+-=[]{}|;:'",./<>? ``
-- International: `Héllo Wörld 你好 こんにちは 안녕하세요`
-- RTL scripts: `مرحبا بالعالم שלום עולם`
-- Complex emoji: `👨‍👩‍👧‍👦` (family), `👋🏽` (skin tone), `🇺🇸🇬🇧` (flags)
-
-See [TESTING.md](./TESTING.md) for detailed testing documentation.
-
 ## Installation
 
 ```bash
