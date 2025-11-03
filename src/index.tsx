@@ -1182,27 +1182,8 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
   ) {
     DEBUG && console.info('onCompositionStart - 🈶 Starting composition', event)
 
+    // Store the selection for use in onCompositionEnd
     compositionStartSelection = getSelectionOffsets(event.currentTarget)
-
-    // If there's selected text, create a deletion patch since the browser will delete it
-    if (compositionStartSelection.start !== compositionStartSelection.end) {
-      const deletionPatch: Patch = {
-        kind: 'deleteContentBackward',
-        range: compositionStartSelection,
-        selection: compositionStartSelection,
-        undo: textContent().slice(compositionStartSelection.start, compositionStartSelection.end),
-      }
-
-      history.past.push(deletionPatch)
-      history.future.clear()
-
-      // Update our internal state to match what the browser will do
-      const newValue =
-        textContent().slice(0, compositionStartSelection.start) +
-        textContent().slice(compositionStartSelection.end)
-      setTextContent(newValue)
-      props.onTextContent?.(newValue)
-    }
 
     config.onCompositionStart?.(event)
   }
@@ -1219,7 +1200,28 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       throw new Error('Expected compositionStartSelection to be defined.')
     }
 
-    // Temporarily set the selection to the adjusted position
+    // If there was selected text, the browser has already deleted it during composition
+    // We need to create a deletion patch to track this in our history
+    if (compositionStartSelection.start !== compositionStartSelection.end) {
+      const deletionPatch: Patch = {
+        kind: 'deleteContentBackward',
+        range: compositionStartSelection,
+        selection: compositionStartSelection,
+        undo: textContent().slice(compositionStartSelection.start, compositionStartSelection.end),
+      }
+
+      history.past.push(deletionPatch)
+      history.future.clear()
+
+      // Update our internal state to match what the browser did
+      const newValue =
+        textContent().slice(0, compositionStartSelection.start) +
+        textContent().slice(compositionStartSelection.end)
+      setTextContent(newValue)
+      props.onTextContent?.(newValue)
+    }
+
+    // Set the selection to where the composition text should be inserted
     select(element, {
       anchor: compositionStartSelection.start,
       focus: compositionStartSelection.start,
