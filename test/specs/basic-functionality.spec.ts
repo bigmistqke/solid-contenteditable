@@ -111,4 +111,22 @@ test.describe('ContentEditable - Basic Functionality', () => {
 
     await expect(editor).toHaveText('')
   })
+
+  test('select all then type character replaces all text', async ({ page }) => {
+    const editor = page.locator('[role="textbox"]').first()
+    await selectAndClear(page, editor)
+
+    // Add some initial text
+    await editor.fill('Hello World')
+    await expect(editor).toHaveText('Hello World')
+
+    // Select all text
+    await page.keyboard.press('ControlOrMeta+a')
+
+    // Type a character - should replace all selected text
+    await page.keyboard.type('X')
+
+    // Should only contain the new character, not append to end
+    await expect(editor).toHaveText('X')
+  })
 })
