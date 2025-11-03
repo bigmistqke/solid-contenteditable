@@ -56,116 +56,12 @@ export type Patch<T = never> = {
 /*                                                                                */
 /**********************************************************************************/
 
-const isNewLine = (char?: string) => char === '\n'
-
 // TODO: replace with createSignal when solid 2.0
 function createWritable<T>(fn: () => T) {
   const signal = createMemo(() => createSignal(fn()))
   const get = () => signal()[0]()
   const set = (v: any) => signal()[1](v)
   return [get, set] as ReturnType<typeof createSignal<T>>
-}
-
-/**********************************************************************************/
-/*                                                                                */
-/*                                 Segmenter Utils                                */
-/*                                                                                */
-/**********************************************************************************/
-
-const graphemeSegmenter = new Intl.Segmenter(undefined, {
-  granularity: 'grapheme',
-})
-const wordSegmenter = new Intl.Segmenter(undefined, { granularity: 'word' })
-
-function getGraphemeSegments(text: string) {
-  return Array.from(graphemeSegmenter.segment(text))
-}
-
-function getNextGraphemeClusterBoundary(text: string, position: number): number {
-  if (position >= text.length) return position
-
-  const segments = getGraphemeSegments(text)
-  let currentOffset = 0
-
-  for (const segment of segments) {
-    const segmentEnd = currentOffset + segment.segment.length
-    if (position >= currentOffset && position < segmentEnd) {
-      // Position is inside this segment, return end of segment
-      return segmentEnd
-    }
-    currentOffset = segmentEnd
-  }
-
-  return Math.min(text.length, position + 1)
-}
-
-function getPreviousGraphemeClusterBoundary(text: string, position: number): number {
-  if (position <= 0) return 0
-
-  const segments = getGraphemeSegments(text)
-  let currentOffset = 0
-
-  for (const segment of segments) {
-    const segmentEnd = currentOffset + segment.segment.length
-    if (position > currentOffset && position <= segmentEnd) {
-      // Position is at end of or inside this segment, return start of segment
-      return currentOffset
-    }
-    currentOffset = segmentEnd
-  }
-
-  return Math.max(0, position - 1)
-}
-
-function getWordSegments(text: string) {
-  return Array.from(wordSegmenter.segment(text))
-}
-
-function getNextWordBoundary(text: string, position: number): number {
-  // Find the next word boundary after the current position
-  for (const segment of getWordSegments(text)) {
-    // Skip if we haven't reached our position yet
-    if (segment.index + segment.segment.length <= position) continue
-
-    // If this segment starts after our position
-    if (segment.index > position) {
-      // If it's a word, return the start of it
-      if (segment.isWordLike) return segment.index
-      // Otherwise continue to find the next word
-      continue
-    }
-
-    // We're inside this segment, return the end of it
-    return segment.index + segment.segment.length
-  }
-
-  return text.length
-}
-
-function getPreviousWordBoundary(text: string, position: number): number {
-  let lastWordStart = 0
-
-  for (const segment of getWordSegments(text)) {
-    // If we've reached or passed our position
-    if (segment.index >= position) {
-      break
-    }
-
-    // If this is a word segment that starts before our position
-    if (segment.isWordLike) {
-      const segmentEnd = segment.index + segment.segment.length
-
-      // If we're at the end of this word or beyond it, this is our candidate
-      if (segmentEnd <= position) {
-        lastWordStart = segment.index
-      } else if (segment.index < position) {
-        // We're inside this word, so return its start
-        return segment.index
-      }
-    }
-  }
-
-  return lastWordStart
 }
 
 /**********************************************************************************/
@@ -582,159 +478,46 @@ function dispatchUndoEvent(event: KeyboardEvent & { currentTarget: HTMLElement }
 /*                                                                                */
 /**********************************************************************************/
 
-function deleteContentForward(source: string, selection: SelectionOffsets): Patch {
-  const range = {
-    start: selection.start,
-    end:
-      selection.start === selection.end
-        ? getNextGraphemeClusterBoundary(source, selection.end)
-        : selection.end,
-  }
+function getTargetRangeFromEvent(
+  event: InputEvent & { currentTarget: HTMLElement },
+  compositionStartSelection?: SelectionOffsets | null,
+): SelectionOffsets {
+  const [domRange] = event.getTargetRanges()
 
-  const patch = {
-    kind: 'deleteContentForward',
-    range,
-    selection,
-    undo: source.slice(range.start, range.end),
-  } as const
-
-  DEBUG &&
-    console.info('deleteContentForward - ➡️ Deleting content forward', source, selection, patch)
-
-  return patch
-}
-
-function deleteContentBackward(source: string, selection: SelectionOffsets): Patch {
-  const range = {
-    start:
-      selection.start === selection.end
-        ? getPreviousGraphemeClusterBoundary(source, selection.start)
-        : selection.start,
-    end: selection.end,
-  }
-
-  const patch = {
-    kind: 'deleteContentBackward',
-    range,
-    selection,
-    undo: source.slice(range.start, range.end),
-  } as const
-
-  DEBUG &&
-    console.info('deleteContentBackward - ⬅️ Deleting content backward', source, selection, patch)
-
-  return patch
-}
-
-function deleteWordBackward(source: string, selection: SelectionOffsets): Patch {
-  const range = {
-    start:
-      selection.start === selection.end
-        ? getPreviousWordBoundary(source, selection.start)
-        : selection.start,
-    end: selection.end,
-  }
-
-  const patch = {
-    kind: 'deleteWordBackward',
-    range,
-    selection,
-    undo: source.slice(range.start, range.end),
-  } as const
-
-  DEBUG && console.info('deleteWordBackward - ⏪ Deleting word backward', source, selection, patch)
-
-  return patch
-}
-
-function deleteWordForward(source: string, selection: SelectionOffsets): Patch {
-  const range = {
-    start: selection.start,
-    end:
-      selection.start === selection.end
-        ? getNextWordBoundary(source, selection.end)
-        : selection.end,
-  }
-
-  const patch = {
-    kind: 'deleteWordForward',
-    selection,
-    range,
-    undo: source.slice(range.start, range.end),
-  } as const
-
-  DEBUG && console.info('deleteWordForward - ⏩ Deleting word forward', source, selection, patch)
-
-  return patch
-}
-
-function deleteSoftLineBackward(source: string, selection: SelectionOffsets): Patch {
-  let start = selection.start
-
-  if (isNewLine(source[start - 1])) {
-    start -= 1
-  } else {
-    while (start > 0 && !isNewLine(source[start - 1])) {
-      start -= 1
+  if (!domRange) {
+    // For insertCompositionText events, use the composition start selection if available
+    if (event.inputType === 'insertCompositionText' && compositionStartSelection) {
+      return compositionStartSelection
     }
-  }
-  const range = {
-    start,
-    end: selection.end,
+    throw new Error(`No target range available for ${event.inputType}`)
   }
 
-  const patch = {
-    kind: 'deleteSoftLineBackward',
-    selection,
-    range,
-    undo: source.slice(range.start, range.end),
-  } as const
-
-  DEBUG &&
-    console.info('deleteSoftLineBackward - 📍 Deleting to line start', source, selection, patch)
-
-  return patch
+  const start = getTextOffset(event.currentTarget, domRange.startContainer, domRange.startOffset)
+  const end = getTextOffset(event.currentTarget, domRange.endContainer, domRange.endOffset)
+  return { start, end, anchor: start, focus: end }
 }
 
-function deleteSoftLineForward(source: string, selection: SelectionOffsets): Patch {
-  let end = selection.end
+function createPatch(
+  event: InputEvent & { currentTarget: HTMLElement },
+  source: string,
+  data?: string,
+): Patch {
+  const selection = getSelectionOffsets(event.currentTarget)
+  const range = getTargetRangeFromEvent(event)
 
-  // If the current character is a newline, delete just that
-  if (isNewLine(source[end])) {
-    end += 1
-  } else {
-    // Find the end of the current line
-    while (end < source.length && !isNewLine(source[end])) {
-      end += 1
-    }
-  }
-
-  const range = {
-    start: selection.start,
-    end,
-  }
-
-  const patch = {
-    kind: 'deleteSoftLineForward',
-    selection,
+  return {
+    kind: event.inputType,
     range,
+    selection,
     undo: source.slice(range.start, range.end),
-  } as const
-
-  DEBUG && console.info('deleteSoftLineForward - 📍 Deleting to line end', source, selection, patch)
-
-  return patch
+    data,
+  }
 }
 
 function createPatchFromInputEvent(
   event: InputEvent & { currentTarget: HTMLElement },
   source: string,
   singleline: boolean,
-  compositionSession?: {
-    startText: string
-    startSelection: SelectionOffsets
-    updates: string[]
-  } | null,
 ): Patch | null {
   const selection = getSelectionOffsets(event.currentTarget)
 
@@ -751,191 +534,40 @@ function createPatchFromInputEvent(
     )
 
   switch (event.inputType) {
-    case 'insertCompositionText': {
-      // For insertCompositionText (Android autocomplete), use getTargetRanges() if available
-      // to get the exact range the browser intends to replace
-      let targetRange = selection
-      let hasValidTargetRanges = false
-      
-      if (event.getTargetRanges) {
-        const targetRanges = event.getTargetRanges()
-        
-        DEBUG &&
-          console.info(
-            'insertCompositionText - 🎯 Analyzing target ranges',
-            JSON.stringify({
-              targetRangesLength: targetRanges.length,
-              targetRanges: targetRanges.map(range => ({
-                startContainer: range.startContainer.nodeName,
-                startOffset: range.startOffset,
-                endContainer: range.endContainer.nodeName,
-                endOffset: range.endOffset,
-                text: range.toString(),
-              })),
-              compositionData: event.data,
-              isComposing: event.isComposing,
-              currentSelection: selection,
-              sourceText: source,
-            }),
-          )
-        
-        if (targetRanges.length > 0) {
-          const domRange = targetRanges[0]!
-          const start = getTextOffset(
-            event.currentTarget,
-            domRange.startContainer,
-            domRange.startOffset,
-          )
-          const end = getTextOffset(event.currentTarget, domRange.endContainer, domRange.endOffset)
-          targetRange = { start, end, anchor: start, focus: end }
-          hasValidTargetRanges = true
-          
-          DEBUG &&
-            console.info(
-              'insertCompositionText - ✅ Using valid target range',
-              JSON.stringify({
-                originalRange: { start, end },
-                willReplace: `"${source.slice(start, end)}"`,
-                withData: `"${event.data}"`,
-              }),
-            )
-        } else {
-          // Fallback: when getTargetRanges() is empty (common on Android),
-          // we need to analyze the composition session to determine the right approach
-          
-          // Track this composition update
-          if (compositionSession && event.data) {
-            compositionSession.updates.push(event.data)
-          }
-          
-          DEBUG &&
-            console.info(
-              'insertCompositionText - 🔍 Empty target ranges analysis',
-              JSON.stringify({
-                compositionData: event.data,
-                currentText: source,
-                currentSelection: selection,
-                compositionSession,
-                analysis: compositionSession ? {
-                  textGrowthSinceStart: source.length - compositionSession.startText.length,
-                  expectedGrowthFromData: event.data ? event.data.length - (source.length - compositionSession.startSelection.start) : 0,
-                  looksLikeAutocomplete: event.data ? event.data.length > (source.length - compositionSession.startSelection.start) + 2 : false
-                } : 'no session tracked'
-              }),
-            )
-          
-          // Use current selection as the target range (this is the standard fallback)
-          targetRange = selection
-        }
-      }
-
-      const patch = {
-        kind: event.inputType,
-        selection,
-        range: targetRange,
-        undo: source.slice(targetRange.start, targetRange.end),
-        data: event.data || '',
-      }
-      
-      DEBUG &&
-        console.info(
-          'createPatchFromInputEvent - 📦 Created insertCompositionText patch',
-          JSON.stringify({
-            patch,
-            undoText: patch.undo,
-            willReplace: `"${source.slice(targetRange.start, targetRange.end)}"`,
-            withData: `"${patch.data}"`,
-            hasValidTargetRanges,
-            patchBehavior: hasValidTargetRanges ? 'REPLACE_RANGE' : 'INSERT_AT_CURSOR',
-          }),
-        )
-      return patch
-    }
-    case 'insertText': {
-      const patch = {
-        kind: event.inputType,
-        selection,
-        range: selection,
-        undo: source.slice(selection.start, selection.end),
-        data: event.data || '',
-      }
-      DEBUG &&
-        console.info(
-          'createPatchFromInputEvent - 📦 Created insertText patch',
-          JSON.stringify({
-            patch,
-            undoText: patch.undo,
-            willReplace: `"${source.slice(selection.start, selection.end)}"`,
-            withData: `"${patch.data}"`,
-          }),
-        )
-      return patch
-    }
-    case 'deleteContentBackward': {
-      return deleteContentBackward(source, selection)
-    }
-    case 'deleteContentForward': {
-      return deleteContentForward(source, selection)
-    }
-    case 'deleteWordBackward': {
-      if (selection.start !== selection.end) {
-        return deleteContentBackward(source, selection)
-      }
-      return deleteWordBackward(source, selection)
-    }
-    case 'deleteWordForward': {
-      if (selection.start !== selection.end) {
-        return deleteContentForward(source, selection)
-      }
-      return deleteWordForward(source, selection)
-    }
-    case 'deleteSoftLineBackward': {
-      if (selection.start !== selection.end) {
-        return deleteContentBackward(source, selection)
-      }
-      return deleteSoftLineBackward(source, selection)
-    }
-    case 'deleteSoftLineForward': {
-      if (selection.start !== selection.end) {
-        return deleteContentForward(source, selection)
-      }
-      return deleteSoftLineForward(source, selection)
-    }
-    case 'deleteByCut': {
-      return {
-        kind: 'deleteByCut',
-        range: selection,
-        selection,
-        undo: source.slice(selection.start, selection.end),
-      }
-    }
-    case 'insertReplacementText':
-    case 'insertFromPaste': {
-      let data = event.dataTransfer?.getData('text')
-      if (singleline && data) {
-        data = data.replaceAll('\n', ' ')
-      }
-
-      return {
-        kind: event.inputType,
-        data,
-        range: selection,
-        selection,
-        undo: source.slice(selection.start, selection.end),
-      }
-    }
     case 'insertLineBreak':
     case 'insertParagraph': {
       if (singleline) return null
 
-      return {
-        kind: event.inputType,
-        data: '\n',
-        range: selection,
-        selection,
-        undo: source.slice(selection.start, selection.end),
-      }
+      return createPatch(event, source, '\n')
     }
+
+    case 'insertReplacementText':
+    case 'insertFromPaste': {
+      let data = event.dataTransfer?.getData('text')
+
+      if (singleline && data) {
+        data = data.replaceAll('\n', ' ')
+      }
+
+      return createPatch(event, source, data)
+    }
+
+    case 'insertText':
+    case 'insertCompositionText': {
+      return createPatch(event, source, event.data || '')
+    }
+
+    case 'deleteContentBackward':
+    case 'deleteContentForward':
+    case 'deleteWordBackward':
+    case 'deleteWordForward':
+    case 'deleteSoftLineBackward':
+    case 'deleteSoftLineForward':
+    case 'deleteByCut':
+    case 'insertCompositionText': {
+      return createPatch(event, source)
+    }
+
     default:
       throw `Unsupported inputType: ${event.inputType}`
   }
@@ -956,7 +588,6 @@ export interface ContentEditableProps<T extends string | never = never>
     | 'textContent'
     | 'onInput'
     | 'style'
-    | 'onCompositionStart'
     | 'onCompositionEnd'
     | 'onUndo'
     | 'onRedo'
@@ -995,7 +626,6 @@ export interface ContentEditableProps<T extends string | never = never>
    * @returns Array of patches that should be redone (applied forward)
    */
   onRedo?: HistoryHandler<T>
-  onCompositionStart?: JSX.EventHandler<HTMLDivElement, CompositionEvent>
   onCompositionEnd?: JSX.EventHandler<HTMLDivElement, CompositionEvent>
   /** Event-callback called whenever `content` is updated */
   onTextContent?: (value: string) => void
@@ -1039,18 +669,11 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       'style',
       'textContent',
       'onCompositionEnd',
-      'onCompositionStart',
     ] satisfies Array<keyof Partial<ContentEditableProps>>,
   )
   const [textContent, setTextContent] = createWritable(() => props.textContent)
   const history = createHistory<T>()
   let element: HTMLDivElement = null!
-  let compositionStartSelection: SelectionOffsets | null = null
-  let compositionSession: {
-    startText: string
-    startSelection: SelectionOffsets
-    updates: string[]
-  } | null = null
 
   // Add an additional newline if the value ends with a newline,
   // otherwise the browser will not display the trailing newline.
@@ -1163,7 +786,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
         break
       }
       default: {
-        const patch = createPatchFromInputEvent(event, textContent(), config.singleline, compositionSession)
+        const patch = createPatchFromInputEvent(event, textContent(), config.singleline)
 
         if (patch) {
           history.future.clear()
@@ -1283,146 +906,23 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
     )
   }
 
-  function onCompositionStart(
-    event: CompositionEvent & {
-      currentTarget: HTMLDivElement
-      target: Element
-    },
-  ) {
-    // Store the selection for use in onCompositionEnd
-    compositionStartSelection = getSelectionOffsets(event.currentTarget)
-    
-    // Track composition session
-    compositionSession = {
-      startText: textContent(),
-      startSelection: compositionStartSelection,
-      updates: []
-    }
-
-    DEBUG && console.info('onCompositionStart - 🈶 Starting composition', JSON.stringify({
-      eventData: event.data,
-      eventType: event.type,
-      isTrusted: event.isTrusted,
-      compositionStartSelection,
-      currentTextContent: textContent(),
-      elementTextContent: event.currentTarget.textContent,
-      compositionSession,
-    }))
-
-    config.onCompositionStart?.(event)
-  }
-
   function onCompositionEnd(
     event: CompositionEvent & {
       currentTarget: HTMLDivElement
       target: Element
     },
   ) {
-    if (!compositionStartSelection) {
-      throw new Error('Expected compositionStartSelection to be defined.')
-    }
-
-    const currentSelection = getSelectionOffsets(event.currentTarget)
-    const currentText = textContent()
     const elementText = event.currentTarget.textContent || ''
 
-    DEBUG && console.info('onCompositionEnd - 🈚 Ending composition', JSON.stringify({
-      eventData: event.data,
-      eventType: event.type,
-      isTrusted: event.isTrusted,
-      compositionStartSelection,
-      currentSelection,
-      currentTextContent: currentText,
-      elementTextContent: elementText,
-      textContentChanged: currentText !== elementText,
-      selectionMoved: JSON.stringify(compositionStartSelection) !== JSON.stringify(currentSelection),
-    }))
-
-    // CRITICAL FIX: If the browser has already modified the DOM during composition,
-    // sync our internal state with the DOM BEFORE dispatching insertCompositionText
-    if (currentText !== elementText) {
-      DEBUG && console.info('onCompositionEnd - 🔄 Syncing internal state with DOM', JSON.stringify({
-        oldInternalState: currentText,
-        newDOMState: elementText,
-        selectionBeforeSync: currentSelection,
-        action: 'Updating internal textContent to match DOM'
-      }))
-      
-      // Preserve the selection through the state update
-      const selectionToPreserve = currentSelection
-      setTextContent(elementText)
-      props.onTextContent?.(elementText)
-      
-      // Restore the selection after state update
-      select(element, {
-        anchor: selectionToPreserve.start,
-        focus: selectionToPreserve.focus,
-      })
-      
-      DEBUG && console.info('onCompositionEnd - 🎯 Restored selection after sync', JSON.stringify({
-        restoredSelection: selectionToPreserve
-      }))
+    if (textContent() === elementText) {
+      return
     }
 
-    // If there was selected text, the browser has already deleted it during composition
-    // We need to create a deletion patch to track this in our history
-    if (compositionStartSelection.start !== compositionStartSelection.end) {
-      const deletionPatch: Patch = {
-        kind: 'deleteContentBackward',
-        range: compositionStartSelection,
-        selection: compositionStartSelection,
-        undo: textContent().slice(compositionStartSelection.start, compositionStartSelection.end),
-      }
-
-      history.past.push(deletionPatch)
-      history.future.clear()
-
-      // Update our internal state to match what the browser did
-      const newValue =
-        textContent().slice(0, compositionStartSelection.start) +
-        textContent().slice(compositionStartSelection.end)
-      setTextContent(newValue)
-      props.onTextContent?.(newValue)
-    }
-
-    // Set the selection to the current position after composition
-    // (Only if we didn't already restore it during state sync)
-    if (currentText === elementText) {
-      const finalSelection = getSelectionOffsets(event.currentTarget)
-      select(element, {
-        anchor: finalSelection.start,
-        focus: finalSelection.focus,
-      })
-    }
-
-    // Only dispatch beforeinput event if there's actual composition data
-    // AND the browser hasn't already applied the changes during composition
-    if (event.data && currentText === elementText) {
-      DEBUG && console.info('onCompositionEnd - 📤 Dispatching insertCompositionText', JSON.stringify({
-        reason: 'Browser has not yet applied composition changes',
-        data: event.data
-      }))
-      
-      event.currentTarget.dispatchEvent(
-        new InputEvent('beforeinput', {
-          inputType: 'insertCompositionText',
-          data: event.data,
-          bubbles: true,
-          cancelable: true,
-        }),
-      )
-    } else if (event.data && currentText !== elementText) {
-      DEBUG && console.info('onCompositionEnd - ⏭️ Skipping insertCompositionText dispatch', JSON.stringify({
-        reason: 'Browser already applied changes during composition',
-        data: event.data,
-        changes: 'DOM state already synced to internal state'
-      }))
-    }
-
-    compositionStartSelection = null
-    compositionSession = null
-
-    config.onCompositionEnd?.(event)
+    // If browser modified DOM during composition, sync our state
+    const selection = getSelectionOffsets(event.currentTarget)
+    setTextContent(elementText)
+    props.onTextContent?.(elementText)
+    select(element, { anchor: selection.start, focus: selection.focus })
   }
 
   createEffect(() => {
@@ -1454,7 +954,6 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       onBeforeInput={onBeforeInput}
       onKeyDown={onKeyDown}
       onPointerDown={onPointerDown}
-      onCompositionStart={onCompositionStart}
       onCompositionEnd={onCompositionEnd}
       style={{
         'scrollbar-width': props.singleline ? 'none' : undefined,
