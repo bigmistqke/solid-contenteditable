@@ -746,7 +746,40 @@ function createPatchFromInputEvent(
     )
 
   switch (event.inputType) {
-    case 'insertCompositionText':
+    case 'insertCompositionText': {
+      // For insertCompositionText (Android autocomplete), use getTargetRanges() if available
+      // to get the exact range the browser intends to replace
+      let targetRange = selection
+      if (event.getTargetRanges) {
+        const targetRanges = event.getTargetRanges()
+        if (targetRanges.length > 0) {
+          const domRange = targetRanges[0]
+          const start = getTextOffset(event.currentTarget, domRange.startContainer, domRange.startOffset)
+          const end = getTextOffset(event.currentTarget, domRange.endContainer, domRange.endOffset)
+          targetRange = { start, end, anchor: start, focus: end }
+        }
+      }
+
+      const patch = {
+        kind: event.inputType,
+        selection,
+        range: targetRange,
+        undo: source.slice(targetRange.start, targetRange.end),
+        data: event.data || '',
+      }
+      DEBUG &&
+        console.info(
+          'createPatchFromInputEvent - 📦 Created insertCompositionText patch',
+          JSON.stringify({
+            patch,
+            undoText: patch.undo,
+            willReplace: `"${source.slice(targetRange.start, targetRange.end)}"`,
+            withData: `"${patch.data}"`,
+            targetRanges: event.getTargetRanges?.() || 'not available',
+          }),
+        )
+      return patch
+    }
     case 'insertText': {
       const patch = {
         kind: event.inputType,
@@ -1227,15 +1260,18 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       focus: compositionStartSelection.start,
     })
 
-    // Dispatch beforeinput event to go through normal input handling
-    event.currentTarget.dispatchEvent(
-      new InputEvent('beforeinput', {
-        inputType: 'insertCompositionText',
-        data: event.data || '',
-        bubbles: true,
-        cancelable: true,
-      }),
-    )
+    // Only dispatch beforeinput event if there's actual composition data
+    // This prevents unwanted autocomplete insertion when user dismisses composition
+    if (event.data) {
+      event.currentTarget.dispatchEvent(
+        new InputEvent('beforeinput', {
+          inputType: 'insertCompositionText',
+          data: event.data,
+          bubbles: true,
+          cancelable: true,
+        }),
+      )
+    }
 
     compositionStartSelection = null
 
