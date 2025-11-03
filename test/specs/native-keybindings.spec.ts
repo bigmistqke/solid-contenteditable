@@ -117,4 +117,141 @@ test.describe('ContentEditable - Native Keybindings', () => {
       await expect(editor).toHaveText('Hi World')
     }),
   )
+
+  test(
+    'Ctrl/Meta+ArrowLeft word navigation',
+    setup(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
+      await editor.fill('Hello wonderful world test')
+
+      // Start at end
+      let position = await getCaretPosition(page, '[role="textbox"]')
+      expect(position).toBe(24) // At end
+
+      // Move left by word
+      await page.keyboard.press('ControlOrMeta+ArrowLeft')
+      position = await getCaretPosition(page, '[role="textbox"]')
+
+      // Should move to beginning of "test"
+      expect(position).toBe(20)
+
+      // Move left by word again
+      await page.keyboard.press('ControlOrMeta+ArrowLeft')
+      position = await getCaretPosition(page, '[role="textbox"]')
+
+      // Should move to beginning of "world"
+      expect(position).toBe(14)
+    }),
+  )
+
+  test(
+    'Ctrl/Meta+ArrowRight word navigation',
+    setup(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
+      await editor.fill('Hello wonderful world test')
+
+      // Start at beginning
+      await page.keyboard.press('Home')
+      let position = await getCaretPosition(page, '[role="textbox"]')
+      expect(position).toBe(0)
+
+      // Move right by word
+      await page.keyboard.press('ControlOrMeta+ArrowRight')
+      position = await getCaretPosition(page, '[role="textbox"]')
+
+      // Should move to end of "Hello"
+      expect(position).toBe(5)
+    }),
+  )
+
+  test(
+    'ArrowUp/ArrowDown line navigation',
+    setup(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
+
+      // Create multi-line content
+      await editor.fill('First line of text')
+      await page.keyboard.press('Enter')
+      await page.keyboard.type('Second line here')
+      await page.keyboard.press('Enter')
+      await page.keyboard.type('Third line content')
+
+      // Move to middle of second line
+      await page.keyboard.press('ArrowUp')
+      await page.keyboard.press('ArrowLeft+ArrowLeft+ArrowLeft')
+
+      let position = await getCaretPosition(page, '[role="textbox"]')
+      const middlePosition = position
+
+      // Move up to first line
+      await page.keyboard.press('ArrowUp')
+      position = await getCaretPosition(page, '[role="textbox"]')
+
+      // Should move up but try to maintain horizontal position
+      expect(position).toBeLessThan(middlePosition)
+
+      // Move down to second line
+      await page.keyboard.press('ArrowDown')
+      position = await getCaretPosition(page, '[role="textbox"]')
+
+      // Should move back to approximately the same position
+      expect(position).toBeGreaterThan(17) // After first line + newline
+    }),
+  )
+
+  test(
+    'Ctrl/Meta+Home/End document navigation',
+    setup(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
+
+      // Create multi-line content
+      await editor.fill('First line')
+      await page.keyboard.press('Enter')
+      await page.keyboard.type('Second line')
+      await page.keyboard.press('Enter')
+      await page.keyboard.type('Third line')
+
+      // Move to middle
+      await page.keyboard.press('ArrowUp')
+      await page.keyboard.press('ArrowLeft+ArrowLeft')
+
+      // Test Ctrl/Meta+Home (go to document beginning)
+      await page.keyboard.press('ControlOrMeta+Home')
+      let position = await getCaretPosition(page, '[role="textbox"]')
+
+      expect(position).toBe(0)
+
+      // Test Ctrl/Meta+End (go to document end)
+      await page.keyboard.press('ControlOrMeta+End')
+      position = await getCaretPosition(page, '[role="textbox"]')
+      const text = await editor.textContent()
+
+      expect(position).toBe(text?.length || 0)
+    }),
+  )
+
+  test(
+    'Shift+Ctrl/Meta+Arrow word selection',
+    setup(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
+      await editor.fill('Hello wonderful world')
+
+      // Position cursor at beginning of "wonderful"
+      await page.keyboard.press('Home')
+      await page.keyboard.press('ControlOrMeta+ArrowRight')
+
+      // Select word to the right
+      await page.keyboard.press('Shift+ControlOrMeta+ArrowRight')
+
+      // Type to replace selection
+      await page.keyboard.type('amazing')
+
+      await expect(editor).toHaveText('Hello amazing world')
+    }),
+  )
 })
