@@ -164,14 +164,26 @@ function createWritable<T>(fn: () => T) {
   return [get, set] as ReturnType<typeof createSignal<T>>
 }
 
-function getTextOffset(element: Node, targetNode: Node, targetOffset: number): number {
-  // Use TreeWalker to efficiently traverse text nodes
+/**********************************************************************************/
+/*                                                                                */
+/*                                TreeWalker Utils                                */
+/*                                                                                */
+/**********************************************************************************/
+
+function* iterateTextNodes(element: HTMLElement): Generator<Text, void, unknown> {
   const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null)
+  let textNode = walker.nextNode()
+  while (textNode) {
+    yield textNode as Text
+    textNode = walker.nextNode()
+  }
+}
 
+function getTextOffset(element: HTMLElement, targetNode: Node, targetOffset: number): number {
+  // Use TreeWalker to efficiently traverse text nodes
   let offset = 0
-  let textNode: Node | null
 
-  while ((textNode = walker.nextNode())) {
+  for (const textNode of iterateTextNodes(element)) {
     if (textNode === targetNode) {
       return offset + targetOffset
     }
@@ -229,11 +241,8 @@ function select(element: HTMLElement, { anchor, focus }: { anchor: number; focus
     if (isAtEndOfNewline) {
       // Find the next text node after the current one and move caret there
       // This makes the caret appear at the beginning of the next line visually
-      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null)
-
       let foundCurrent = false
-      let textNode: Node | null
-      while ((textNode = walker.nextNode())) {
+      for (const textNode of iterateTextNodes(element)) {
         if (foundCurrent) {
           resultAnchor.node = textNode
           resultAnchor.offset = 0
@@ -258,22 +267,11 @@ function select(element: HTMLElement, { anchor, focus }: { anchor: number; focus
   }
 }
 
-function getNodeAndOffsetAtIndex(element: Node, index: number) {
-  // Special case: if element is already a text node
-  if (element.nodeType === Node.TEXT_NODE) {
-    const length = element.textContent?.length || 0
-    if (index <= length) {
-      return { node: element, offset: index }
-    }
-    throw new Error(`Index ${index} exceeds text node length ${length}`)
-  }
-
+function getNodeAndOffsetAtIndex(element: HTMLElement, index: number) {
   // Traverse all text nodes in order
   let currentOffset = 0
-  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null)
 
-  let textNode: Node | null
-  while ((textNode = walker.nextNode())) {
+  for (const textNode of iterateTextNodes(element)) {
     const textLength = textNode.textContent?.length || 0
 
     if (currentOffset + textLength >= index) {
