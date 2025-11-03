@@ -5,33 +5,29 @@ import {
   PlaywrightTestOptions,
   PlaywrightWorkerArgs,
   PlaywrightWorkerOptions,
-  TestType,
+  TestInfo,
 } from '@playwright/test'
 
 // Debug flag for Firefox-specific debugging
 const DEBUG = process.env.DEBUG === 'true'
 
-export function setup(
-  test: TestType<
-    PlaywrightTestArgs & PlaywrightTestOptions,
-    PlaywrightWorkerArgs & PlaywrightWorkerOptions
-  >,
-) {
-  test.beforeEach(async ({ page }) => {
-    await page.goto(`/${DEBUG ? '?debug=1' : ''}`)
-  })
-}
+type TestBody = (
+  args: PlaywrightTestArgs & PlaywrightTestOptions & PlaywrightWorkerArgs & PlaywrightWorkerOptions,
+  testInfo: TestInfo,
+) => Promise<void> | void
 
 // Wrapper function to add debug logging to Firefox tests
-export function log(testFn: ({ page }: { page: Page }) => Promise<void>) {
-  return async ({ page }: { page: Page }) => {
+export function setup(testFn: TestBody): TestBody {
+  return async (args, info) => {
+    await args.page.goto(`/${DEBUG ? '?debug=1' : ''}`)
+
     if (!DEBUG) {
-      return testFn({ page })
+      return testFn(args, info)
     }
 
     const consoleLogs: string[] = []
 
-    page.on('console', async msg => {
+    args.page.on('console', async msg => {
       console.log('message', msg)
       if (msg.type() === 'info' || msg.type() === 'log') {
         try {
@@ -54,7 +50,7 @@ export function log(testFn: ({ page }: { page: Page }) => Promise<void>) {
     })
 
     try {
-      await testFn({ page })
+      await testFn(args, info)
     } finally {
       if (consoleLogs.length > 0) {
         console.log(`\n=== FIREFOX DEBUG LOGS ===`)
@@ -76,7 +72,7 @@ export async function selectWord(page: Page, locator: Locator, wordIndex: number
   await locator.click()
 
   // Move to the beginning of the text
-  await page.keyboard.press('ControlOrMeta+Home')
+  await moveCaretToStart(locator)
 
   // Navigate to the desired word using word-by-word navigation
   for (let i = 0; i < wordIndex; i++) {
@@ -91,14 +87,42 @@ export async function selectLastWord(page: Page, locator: Locator) {
   await locator.click()
 
   // Move to the end of the text
-  await page.keyboard.press('End')
+  await moveCaretToEnd(page, locator)
 
   // Move backward to the start of the last word (without selection)
   const wordLeftKey = process.platform === 'darwin' ? 'Alt+ArrowLeft' : 'Control+ArrowLeft'
   await page.keyboard.press(wordLeftKey)
 
-  // Now select from current position to the end
-  await page.keyboard.press('Shift+End')
+  // Now select from current position to the end using programmatic selection
+  await locator.evaluate((element: HTMLElement) => {
+    const selection = window.getSelection()
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0)
+      const startContainer = range.startContainer
+      const startOffset = range.startOffset
+
+      // Extend selection to end of element
+      const newRange = document.createRange()
+      newRange.setStart(startContainer, startOffset)
+
+      // Find the last text node or use the element itself
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null)
+      let lastTextNode: Node = element
+      let node
+      while ((node = walker.nextNode())) {
+        lastTextNode = node
+      }
+
+      if (lastTextNode.nodeType === Node.TEXT_NODE) {
+        newRange.setEnd(lastTextNode, lastTextNode.textContent?.length || 0)
+      } else {
+        newRange.setEnd(element, element.childNodes.length)
+      }
+
+      selection.removeAllRanges()
+      selection.addRange(newRange)
+    }
+  })
 }
 
 // Utility function to dispatch input events directly to test implementation
@@ -424,6 +448,37 @@ export async function getCaretPosition(page: Page, selector: string): Promise<nu
 
     return offset
   }, selector)
+}
+
+// Move caret to the beginning of the text
+export async function moveCaretToStart(locator: Locator) {
+  // Use evaluate to programmatically set caret position
+  await locator.evaluate((element: HTMLElement) => {
+    const selection = window.getSelection()
+    if (selection) {
+      selection.removeAllRanges()
+      const range = document.createRange()
+      const firstTextNode = element.firstChild || element
+      range.setStart(firstTextNode, 0)
+      range.setEnd(firstTextNode, 0)
+      selection.addRange(range)
+    }
+  })
+}
+
+// Move caret to the end of the text
+export async function moveCaretToEnd(page: Page, locator: Locator) {
+  // Focus the element first
+  await locator.focus()
+  // Select all and collapse to end
+  await locator.selectText()
+  await page.keyboard.press('ArrowRight')
+}
+
+// Select all text in the element
+export async function selectAll(page: Page, locator: Locator) {
+  await locator.focus()
+  await page.keyboard.press('ControlOrMeta+a')
 }
 
 // Perform undo operation

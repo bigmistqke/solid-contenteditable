@@ -1,21 +1,19 @@
 import { expect, test } from '@playwright/test'
-import { log, selectAndClear, setup } from './utils'
+import { moveCaretToEnd, moveCaretToStart, selectAll, selectAndClear, setup } from './utils'
 
 /**
  * Selection and Navigation Tests
  * Tests text selection, cursor movement, and navigation functionality
  */
 test.describe('ContentEditable - Selection & Navigation', () => {
-  setup(test)
-
   test(
     'arrow key navigation',
-    log(async ({ page }) => {
+    setup(async ({ page }) => {
       const editor = page.locator('[role="textbox"]').first()
       await selectAndClear(page, editor)
       await editor.fill('Hello World')
 
-      await page.keyboard.press('Home')
+      await moveCaretToStart(editor)
       await editor.pressSequentially('Hi ')
       await expect(editor).toHaveText('Hi Hello World')
     }),
@@ -23,12 +21,12 @@ test.describe('ContentEditable - Selection & Navigation', () => {
 
   test(
     'cursor position is correct after deletion',
-    log(async ({ page }) => {
+    setup(async ({ page }) => {
       const editor = page.locator('[role="textbox"]').first()
       await selectAndClear(page, editor)
       await editor.fill('Hello World')
 
-      await page.keyboard.press('Home')
+      await moveCaretToStart(editor)
       await page.keyboard.press('ArrowRight+ArrowRight+ArrowRight+ArrowRight+ArrowRight')
 
       await editor.pressSequentially('X')
@@ -38,12 +36,12 @@ test.describe('ContentEditable - Selection & Navigation', () => {
 
   test(
     'visual cursor position is correct',
-    log(async ({ page }) => {
+    setup(async ({ page }) => {
       const editor = page.locator('[role="textbox"]').first()
       await selectAndClear(page, editor)
       await editor.fill('Hello World')
 
-      await page.keyboard.press('Home')
+      await moveCaretToStart(editor)
       await page.keyboard.press('ArrowRight+ArrowRight+ArrowRight+ArrowRight+ArrowRight')
 
       await editor.pressSequentially('X')
@@ -114,16 +112,16 @@ test.describe('ContentEditable - Selection & Navigation', () => {
 
   test(
     'home and end keys work',
-    log(async ({ page }) => {
+    setup(async ({ page }) => {
       const editor = page.locator('[role="textbox"]').first()
       await selectAndClear(page, editor)
       await editor.fill('Hello World')
 
-      await page.keyboard.press('Home')
+      await moveCaretToStart(editor)
       await editor.pressSequentially('Start ')
       await expect(editor).toHaveText('Start Hello World')
 
-      await page.keyboard.press('End')
+      await moveCaretToEnd(page, editor)
       await editor.pressSequentially(' End')
       await expect(editor).toHaveText('Start Hello World End')
     }),
@@ -131,20 +129,21 @@ test.describe('ContentEditable - Selection & Navigation', () => {
 
   test(
     'shift+arrow selection works',
-    log(async ({ page }) => {
+    setup(async ({ page }) => {
       const editor = page.locator('[role="textbox"]').first()
       await selectAndClear(page, editor)
       await editor.fill('Hello World')
 
-      await page.keyboard.press('Shift+Home')
+      // Select all and replace with 'Goodbye'
+      await selectAll(page, editor)
       await editor.pressSequentially('Goodbye')
       await expect(editor).toHaveText('Goodbye')
 
       await selectAndClear(page, editor)
       await editor.fill('Hello World')
 
-      await page.keyboard.press('Home')
-      await page.keyboard.press('Shift+End')
+      // Select all text from start to end
+      await selectAll(page, editor)
       await editor.pressSequentially('Replaced')
       await expect(editor).toHaveText('Replaced')
     }),
@@ -186,7 +185,7 @@ test.describe('ContentEditable - Selection & Navigation', () => {
 
   test(
     'selection persists across operations',
-    log(async ({ page }) => {
+    setup(async ({ page }) => {
       const editor = page.locator('[role="textbox"]').first()
       await selectAndClear(page, editor)
       await editor.fill('Hello World')
@@ -197,7 +196,7 @@ test.describe('ContentEditable - Selection & Navigation', () => {
       await page.keyboard.press('ControlOrMeta+c')
 
       // Move to end and paste
-      await page.keyboard.press('End')
+      await moveCaretToEnd(page, editor)
       await editor.pressSequentially(' ')
       await page.keyboard.press('ControlOrMeta+v')
 

@@ -6,125 +6,156 @@ import { selectAndClear, setup } from './utils'
  * Tests core features: input, deletion, focus, rapid typing
  */
 test.describe('ContentEditable - Basic Functionality', () => {
-  setup(test)
+  test(
+    'basic text input and output',
+    setup(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
+      await editor.fill('Hello World')
+      await expect(editor).toHaveText('Hello World')
+    }),
+  )
 
-  test('basic text input and output', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
-    await selectAndClear(page, editor)
-    await editor.fill('Hello World')
-    await expect(editor).toHaveText('Hello World')
-  })
+  test(
+    'basic text deletion',
+    setup(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
+      await editor.fill('Hello World')
+      await page.keyboard.press('Backspace')
+      await expect(editor).toHaveText('Hello Worl')
+    }),
+  )
 
-  test('basic text deletion', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
-    await selectAndClear(page, editor)
-    await editor.fill('Hello World')
-    await page.keyboard.press('Backspace')
-    await expect(editor).toHaveText('Hello Worl')
-  })
-
-  test('focus management', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
-    await editor.click()
-    await expect(editor).toBeFocused()
-    await editor.fill('Test')
-    await expect(editor).toBeFocused()
-  })
-
-  test('handles empty input', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
-    await selectAndClear(page, editor)
-    await expect(editor).toHaveText('')
-  })
-
-  test('handles rapid typing', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
-    await selectAndClear(page, editor)
-    const text = 'The quick brown fox jumps over the lazy dog'
-    await editor.fill(text)
-    await expect(editor).toHaveText(text)
-  })
-
-  test('handles special characters', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
-    await selectAndClear(page, editor)
-
-    const specialChars = '`~!@#$%^&*()_+-=[]{}|;:\'",./<>?'
-    await editor.fill(specialChars)
-    await expect(editor).toHaveText(specialChars)
-  })
-
-  test('handles very long text input', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
-    await selectAndClear(page, editor)
-
-    const longText = 'A'.repeat(1000)
-    await editor.fill(longText)
-    await expect(editor).toHaveText(longText)
-  })
-
-  test('handles empty operations gracefully', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
-    await selectAndClear(page, editor)
-
-    // Try to delete when empty
-    await page.keyboard.press('Backspace')
-    await page.keyboard.press('Delete')
-    await expect(editor).toHaveText('')
-
-    // Try to undo when no history
-    await page.keyboard.press('ControlOrMeta+z')
-    await expect(editor).toHaveText('')
-  })
-
-  test('maintains focus during complex operations', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
-    await selectAndClear(page, editor)
-
-    await editor.fill('Hello')
-    await expect(editor).toBeFocused()
-
-    await page.keyboard.press('ControlOrMeta+a')
-    await expect(editor).toBeFocused()
-
-    await page.keyboard.press('ControlOrMeta+c')
-    await expect(editor).toBeFocused()
-
-    await page.keyboard.press('ControlOrMeta+v')
-    await expect(editor).toBeFocused()
-  })
-
-  test('handles rapid operations', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
-    await selectAndClear(page, editor)
-
-    // Rapid typing and deleting
-    for (let i = 0; i < 10; i++) {
+  test(
+    'focus management',
+    setup(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await editor.click()
+      await expect(editor).toBeFocused()
       await editor.fill('Test')
+      await expect(editor).toBeFocused()
+    }),
+  )
+
+  test(
+    'handles empty input',
+    setup(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
+      await expect(editor).toHaveText('')
+    }),
+  )
+
+  test(
+    'handles rapid typing',
+    setup(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
+      const text = 'The quick brown fox jumps over the lazy dog'
+      await editor.fill(text)
+      await expect(editor).toHaveText(text)
+    }),
+  )
+
+  test(
+    'handles special characters',
+    setup(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
+
+      const specialChars = '`~!@#$%^&*()_+-=[]{}|;:\'",./<>?'
+      await editor.fill(specialChars)
+      await expect(editor).toHaveText(specialChars)
+    }),
+  )
+
+  test(
+    'handles very long text input',
+    setup(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
+
+      const longText = 'A'.repeat(1000)
+      await editor.fill(longText)
+      await expect(editor).toHaveText(longText)
+    }),
+  )
+
+  test(
+    'handles empty operations gracefully',
+    setup(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
+
+      // Try to delete when empty
       await page.keyboard.press('Backspace')
-      await page.keyboard.press('Backspace')
-      await page.keyboard.press('Backspace')
-      await page.keyboard.press('Backspace')
-    }
+      await page.keyboard.press('Delete')
+      await expect(editor).toHaveText('')
 
-    await expect(editor).toHaveText('')
-  })
+      // Try to undo when no history
+      await page.keyboard.press('ControlOrMeta+z')
+      await expect(editor).toHaveText('')
+    }),
+  )
 
-  test('select all then type character replaces all text', async ({ page }) => {
-    const editor = page.locator('[role="textbox"]').first()
-    await selectAndClear(page, editor)
+  test(
+    'maintains focus during complex operations',
+    setup(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
 
-    // Add some initial text
-    await editor.fill('Hello World')
-    await expect(editor).toHaveText('Hello World')
+      await editor.fill('Hello')
+      await expect(editor).toBeFocused()
 
-    // Select all text
-    await page.keyboard.press('ControlOrMeta+a')
+      await page.keyboard.press('ControlOrMeta+a')
+      await expect(editor).toBeFocused()
 
-    // Type a character - should replace all selected text
-    await page.keyboard.type('X')
+      await page.keyboard.press('ControlOrMeta+c')
+      await expect(editor).toBeFocused()
 
-    // Should only contain the new character, not append to end
-    await expect(editor).toHaveText('X')
-  })
+      await page.keyboard.press('ControlOrMeta+v')
+      await expect(editor).toBeFocused()
+    }),
+  )
+
+  test(
+    'handles rapid operations',
+    setup(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
+
+      // Rapid typing and deleting
+      for (let i = 0; i < 10; i++) {
+        await editor.fill('Test')
+        await page.keyboard.press('Backspace')
+        await page.keyboard.press('Backspace')
+        await page.keyboard.press('Backspace')
+        await page.keyboard.press('Backspace')
+      }
+
+      await expect(editor).toHaveText('')
+    }),
+  )
+
+  test(
+    'select all then type character replaces all text',
+    setup(async ({ page }) => {
+      const editor = page.locator('[role="textbox"]').first()
+      await selectAndClear(page, editor)
+
+      // Add some initial text
+      await editor.fill('Hello World')
+      await expect(editor).toHaveText('Hello World')
+
+      // Select all text
+      await page.keyboard.press('ControlOrMeta+a')
+
+      // Type a character - should replace all selected text
+      await page.keyboard.type('X')
+
+      // Should only contain the new character, not append to end
+      await expect(editor).toHaveText('X')
+    }),
+  )
 })
