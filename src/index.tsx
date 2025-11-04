@@ -702,6 +702,10 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       return
     }
 
+    if (isSingleLineEventType(event.inputType) && config.singleline) {
+      return
+    }
+
     switch (event.inputType) {
       case 'historyUndo': {
         // Get patches to undo using custom handler or default
@@ -757,17 +761,6 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
           throw new Error(`No target range available for ${event.inputType}`)
         }
 
-        console.log(
-          'isSingleLineEventType(event.type)',
-          isSingleLineEventType(event.inputType),
-          event.type,
-          config.singleline,
-        )
-
-        if (isSingleLineEventType(event.inputType) && config.singleline) {
-          return
-        }
-
         history.future.clear()
 
         const data = getDataFromBeforeInputEvent(event, config.singleline)
@@ -804,10 +797,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       const keybindings = normalizedKeyBindings()
 
       if (keyCombo && keyCombo in keybindings) {
-        const createPatch = keybindings[keyCombo]
-        if (!createPatch) {
-          throw new Error(`Expected keybindgings[${keyCombo}] to be defined.`)
-        }
+        const createPatch = keybindings[keyCombo]!
 
         const patch = createPatch({
           textContent: textContent(),
