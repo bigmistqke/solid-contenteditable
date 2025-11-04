@@ -7,11 +7,11 @@ import {
   createSignal,
   type JSX,
   mergeProps,
+  on,
   splitProps,
 } from 'solid-js'
 
 const DEBUG = import.meta.env['DEV'] && new URLSearchParams(window.location.search).get('debug')
-
 const IS_MAC = navigator.platform.startsWith('Mac')
 
 interface RangeOffsets {
@@ -26,35 +26,71 @@ interface SelectionOffsets {
   focus: number
 }
 
-export type Patch<T = never> = {
+export type PatchKind =
+  | 'insertLineBreak'
+  | 'insertFromPaste'
+  | 'insertParagraph'
+  | 'insertReplacementText'
+  | 'insertText'
+  | 'insertCompositionText'
+  | 'deleteByCut'
+  | 'deleteContentForward'
+  | 'deleteContentBackward'
+  | 'deleteWordBackward'
+  | 'deleteWordForward'
+  | 'deleteSoftLineBackward'
+  | 'deleteSoftLineForward'
+  | 'caret'
+
+export interface Patch<T = never> {
   // see https://w3c.github.io/input-events/#interface-InputEvent-Attributes
-  kind:
-    | 'insertLineBreak'
-    | 'insertFromPaste'
-    | 'insertParagraph'
-    | 'insertReplacementText'
-    | 'insertText'
-    | 'insertCompositionText'
-    | 'deleteByCut'
-    | 'deleteContentForward'
-    | 'deleteContentBackward'
-    | 'deleteWordBackward'
-    | 'deleteWordForward'
-    | 'deleteSoftLineBackward'
-    | 'deleteSoftLineForward'
-    | 'caret'
-    | T
+  kind: PatchKind | T
   data?: string
   range: RangeOffsets
   selection: SelectionOffsets
   undo: string
 }
 
+type DOMEvent<
+  TEvent,
+  TCurrentTarget extends HTMLElement = HTMLElement,
+  TTarget extends Element = Element,
+> = TEvent & { currentTarget: TCurrentTarget; target: TTarget }
+
+interface History<T extends string = never> {
+  future: {
+    array: Patch<T>[]
+    clear(): void
+    pop(): Patch<T> | undefined
+    peek(): Patch<T> | undefined
+    push(patch: Patch<T>): void
+  }
+  past: {
+    array: Patch<T>[]
+    pop(): Patch<T> | undefined
+    peek(): Patch<T> | undefined
+    push(patch: Patch<T>): void
+  }
+}
+
+type HistoryHandler<T extends string> = (history: History<T>) => Array<Patch<T>>
+
 /**********************************************************************************/
 /*                                                                                */
-/*                                      Utils                                     */
+/*                                    Misc Utils                                  */
 /*                                                                                */
 /**********************************************************************************/
+
+const isInsertEventType = (
+  eventType: string,
+): eventType is 'insertCompositionText' | 'insertText' => eventType.startsWith('insert')
+
+const SINGLE_LINE_EVENT_TYPES = ['insertLineBreak', 'insertParagraph'] as const
+
+type SingleLineEventType = (typeof SINGLE_LINE_EVENT_TYPES)[number]
+
+const isSingleLineEventType = (eventType: string): eventType is SingleLineEventType =>
+  SINGLE_LINE_EVENT_TYPES.includes(eventType as any)
 
 // TODO: replace with createSignal when solid 2.0
 function createWritable<T>(fn: () => T) {
@@ -62,6 +98,48 @@ function createWritable<T>(fn: () => T) {
   const get = () => signal()[0]()
   const set = (v: any) => signal()[1](v)
   return [get, set] as ReturnType<typeof createSignal<T>>
+}
+
+function getDataFromBeforeInputEvent(
+  event: DOMEvent<InputEvent>,
+  singleline: boolean,
+): string | undefined {
+  switch (event.inputType) {
+    case 'insertLineBreak':
+    case 'insertParagraph': {
+      return '\n'
+    }
+
+    case 'insertReplacementText':
+    case 'insertFromPaste': {
+      const data = event.dataTransfer?.getData('text')
+
+      if (singleline && data) {
+        return data.replaceAll('\n', ' ')
+      }
+
+      return data ?? undefined
+    }
+
+    case 'insertText':
+    case 'insertCompositionText': {
+      return event.data ?? undefined
+    }
+
+    case 'deleteContentBackward':
+    case 'deleteContentForward':
+    case 'deleteWordBackward':
+    case 'deleteWordForward':
+    case 'deleteSoftLineBackward':
+    case 'deleteSoftLineForward':
+    case 'deleteByCut':
+    case 'insertCompositionText': {
+      return undefined
+    }
+
+    default:
+      throw `Unsupported inputType: ${event.inputType}`
+  }
 }
 
 /**********************************************************************************/
@@ -281,8 +359,6 @@ function normalizeKeyCombo(keyCombo: string) {
 /*                                                                                */
 /**********************************************************************************/
 
-type HistoryHandler<T extends string> = (history: History<T>) => Array<Patch<T>>
-
 function createHistory<T extends string = never>() {
   let past: Array<Patch<T>> = []
   let future: Array<Patch<T>> = []
@@ -361,12 +437,6 @@ function createHistory<T extends string = never>() {
   }
 }
 
-type History<T extends string = never> = ReturnType<typeof createHistory<T>>
-
-const isInsertEventType = (
-  eventType: string,
-): eventType is 'insertCompositionText' | 'insertText' => eventType.startsWith('insert')
-
 function defaultUndo<T extends string = never>(history: History<T>): Array<Patch<T>> {
   const patches: Array<Patch<T>> = []
 
@@ -415,11 +485,11 @@ function defaultRedo<T extends string = never>(history: History<T>): Array<Patch
 
   DEBUG && console.info('defaultRedo - 🔄 Called with future length', history.future.array.length)
 
-  while (history.future.peek()) {
-    const patch = history.future.pop()
-    if (!patch) break
+  let patch: Patch<T> | undefined
 
+  while ((patch = history.future.pop())) {
     DEBUG && console.log('defaultRedo - 📤 Popped patch from future:', patch.kind, patch.data)
+
     patches.push(patch)
     history.past.push(patch)
 
@@ -450,7 +520,7 @@ function defaultRedo<T extends string = never>(history: History<T>): Array<Patch
   return patches
 }
 
-function dispatchRedoEvent(event: KeyboardEvent & { currentTarget: HTMLElement }) {
+function dispatchRedoEvent(event: DOMEvent<KeyboardEvent>) {
   event.preventDefault()
   event.currentTarget.dispatchEvent(
     new InputEvent('beforeinput', {
@@ -461,7 +531,7 @@ function dispatchRedoEvent(event: KeyboardEvent & { currentTarget: HTMLElement }
   )
 }
 
-function dispatchUndoEvent(event: KeyboardEvent & { currentTarget: HTMLElement }) {
+function dispatchUndoEvent(event: DOMEvent<KeyboardEvent>) {
   event.preventDefault()
   event.currentTarget.dispatchEvent(
     new InputEvent('beforeinput', {
@@ -470,107 +540,6 @@ function dispatchUndoEvent(event: KeyboardEvent & { currentTarget: HTMLElement }
       cancelable: true,
     }),
   )
-}
-
-/**********************************************************************************/
-/*                                                                                */
-/*                                   Patch Utils                                  */
-/*                                                                                */
-/**********************************************************************************/
-
-function getTargetRangeFromEvent(
-  event: InputEvent & { currentTarget: HTMLElement },
-  compositionStartSelection?: SelectionOffsets | null,
-): SelectionOffsets {
-  const [domRange] = event.getTargetRanges()
-
-  if (!domRange) {
-    // For insertCompositionText events, use the composition start selection if available
-    if (event.inputType === 'insertCompositionText' && compositionStartSelection) {
-      return compositionStartSelection
-    }
-    throw new Error(`No target range available for ${event.inputType}`)
-  }
-
-  const start = getTextOffset(event.currentTarget, domRange.startContainer, domRange.startOffset)
-  const end = getTextOffset(event.currentTarget, domRange.endContainer, domRange.endOffset)
-  return { start, end, anchor: start, focus: end }
-}
-
-function createPatch(
-  event: InputEvent & { currentTarget: HTMLElement },
-  source: string,
-  data?: string,
-): Patch {
-  const selection = getSelectionOffsets(event.currentTarget)
-  const range = getTargetRangeFromEvent(event)
-
-  return {
-    kind: event.inputType,
-    range,
-    selection,
-    undo: source.slice(range.start, range.end),
-    data,
-  }
-}
-
-function createPatchFromInputEvent(
-  event: InputEvent & { currentTarget: HTMLElement },
-  source: string,
-  singleline: boolean,
-): Patch | null {
-  const selection = getSelectionOffsets(event.currentTarget)
-
-  DEBUG &&
-    console.info(
-      'createPatchFromInputEvent - 🎯 Creating patch from input',
-      JSON.stringify({
-        inputType: event.inputType,
-        data: event.data,
-        selection,
-        sourceLength: source.length,
-        source,
-      }),
-    )
-
-  switch (event.inputType) {
-    case 'insertLineBreak':
-    case 'insertParagraph': {
-      if (singleline) return null
-
-      return createPatch(event, source, '\n')
-    }
-
-    case 'insertReplacementText':
-    case 'insertFromPaste': {
-      let data = event.dataTransfer?.getData('text')
-
-      if (singleline && data) {
-        data = data.replaceAll('\n', ' ')
-      }
-
-      return createPatch(event, source, data)
-    }
-
-    case 'insertText':
-    case 'insertCompositionText': {
-      return createPatch(event, source, event.data || '')
-    }
-
-    case 'deleteContentBackward':
-    case 'deleteContentForward':
-    case 'deleteWordBackward':
-    case 'deleteWordForward':
-    case 'deleteSoftLineBackward':
-    case 'deleteSoftLineForward':
-    case 'deleteByCut':
-    case 'insertCompositionText': {
-      return createPatch(event, source)
-    }
-
-    default:
-      throw `Unsupported inputType: ${event.inputType}`
-  }
 }
 
 /**********************************************************************************/
@@ -584,10 +553,10 @@ export interface ContentEditableProps<T extends string | never = never>
     ComponentProps<'div'>,
     | 'children'
     | 'contenteditable'
-    | 'onBeforeInput'
     | 'textContent'
     | 'onInput'
     | 'style'
+    | 'onBeforeInput'
     | 'onCompositionEnd'
     | 'onUndo'
     | 'onRedo'
@@ -626,7 +595,8 @@ export interface ContentEditableProps<T extends string | never = never>
    * @returns Array of patches that should be redone (applied forward)
    */
   onRedo?: HistoryHandler<T>
-  onCompositionEnd?: JSX.EventHandler<HTMLDivElement, CompositionEvent>
+  onBeforeInput?(event: DOMEvent<InputEvent, HTMLDivElement>): void
+  onCompositionEnd?(event: DOMEvent<CompositionEvent, HTMLDivElement>): void
   /** Event-callback called whenever `content` is updated */
   onTextContent?: (value: string) => void
   /**
@@ -659,16 +629,17 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       props,
     ),
     [
-      'render',
       'editable',
-      'onUndo',
+      'keyBindings',
+      'onBeforeInput',
+      'onCompositionEnd',
       'onRedo',
       'onTextContent',
-      'keyBindings',
+      'onUndo',
+      'render',
       'singleline',
       'style',
       'textContent',
-      'onCompositionEnd',
     ] satisfies Array<keyof Partial<ContentEditableProps>>,
   )
   const [textContent, setTextContent] = createWritable(() => props.textContent)
@@ -694,13 +665,10 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
   function applyPatch(patch: Patch<T>) {
     history.past.push(patch)
 
-    const {
-      data = '',
-      range: { start, end },
-    } = patch
-
     const oldValue = textContent()
-    const newValue = `${oldValue.slice(0, start)}${data}${oldValue.slice(end)}`
+    const newValue = `${oldValue.slice(0, patch.range.start)}${patch.data ?? ''}${oldValue.slice(
+      patch.range.end,
+    )}`
 
     DEBUG &&
       console.info(
@@ -709,9 +677,9 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
           patch,
           oldValue,
           newValue,
-          range: { start, end },
-          replacedText: `"${oldValue.slice(start, end)}"`,
-          insertedData: `"${data}"`,
+          range: patch.range,
+          replacedText: `"${oldValue.slice(patch.range.start, patch.range.end)}"`,
+          insertedData: `"${patch.data}"`,
         }),
       )
 
@@ -719,7 +687,13 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
     props.onTextContent?.(newValue)
   }
 
-  function onBeforeInput(event: InputEvent & { currentTarget: HTMLDivElement }) {
+  function onBeforeInput(event: DOMEvent<InputEvent, HTMLDivElement>) {
+    config.onBeforeInput?.(event)
+
+    if (event.defaultPrevented) {
+      return
+    }
+
     event.preventDefault()
 
     DEBUG && console.info('onBeforeInput - 📝 Processing input event', event)
@@ -742,18 +716,14 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
             continue
           }
 
-          const {
-            data = '',
-            range: { start },
-            selection,
-            undo,
-          } = patch
-
           setTextContent(
-            value => `${value.slice(0, start)}${undo}${value.slice(start + data.length)}`,
+            value =>
+              `${value.slice(0, patch.range.start)}${patch.undo}${value.slice(
+                patch.range.start + (patch.data?.length ?? 0),
+              )}`,
           )
 
-          lastSelection = selection
+          lastSelection = patch.selection
         }
 
         // Restore selection from last non-caret patch
@@ -774,39 +744,59 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
 
           applyPatch(patch)
 
-          const {
-            range: { start },
-            data = '',
-          } = patch
-
-          select(element, { anchor: start + data.length })
+          select(element, { anchor: patch.range.start + (patch.data?.length ?? 0) })
         }
 
         props.onTextContent?.(textContent())
         break
       }
       default: {
-        const patch = createPatchFromInputEvent(event, textContent(), config.singleline)
+        const [targetRange] = event.getTargetRanges()
 
-        if (patch) {
-          history.future.clear()
-
-          applyPatch(patch)
-
-          const {
-            data = '',
-            range: { start },
-          } = patch
-
-          select(element, { anchor: start + data.length })
+        if (!targetRange) {
+          throw new Error(`No target range available for ${event.inputType}`)
         }
+
+        console.log(
+          'isSingleLineEventType(event.type)',
+          isSingleLineEventType(event.inputType),
+          event.type,
+          config.singleline,
+        )
+
+        if (isSingleLineEventType(event.inputType) && config.singleline) {
+          return
+        }
+
+        history.future.clear()
+
+        const data = getDataFromBeforeInputEvent(event, config.singleline)
+
+        const range = {
+          start: getTextOffset(
+            event.currentTarget,
+            targetRange.startContainer,
+            targetRange.startOffset,
+          ),
+          end: getTextOffset(event.currentTarget, targetRange.endContainer, targetRange.endOffset),
+        }
+
+        applyPatch({
+          kind: event.inputType as T,
+          data,
+          range,
+          selection: getSelectionOffsets(event.currentTarget),
+          undo: textContent().slice(range.start, range.end),
+        })
+
+        select(element, { anchor: range.start + (data?.length ?? 0) })
 
         break
       }
     }
   }
 
-  function onKeyDown(event: KeyboardEvent & { currentTarget: HTMLElement }) {
+  function onKeyDown(event: DOMEvent<KeyboardEvent>) {
     DEBUG && console.info('onKeyDown - ⌨️ Key pressed', event)
 
     if (config.keyBindings) {
@@ -829,11 +819,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
           event.preventDefault()
           history.future.clear()
           applyPatch(patch)
-          const {
-            data = '',
-            range: { start },
-          } = patch
-          select(element, { anchor: start + data.length })
+          select(element, { anchor: patch.range.start + (patch.data?.length ?? 0) })
           return
         }
       }
@@ -906,43 +892,47 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
     )
   }
 
-  function onCompositionEnd(
-    event: CompositionEvent & {
-      currentTarget: HTMLDivElement
-      target: Element
-    },
-  ) {
+  function onCompositionEnd(event: DOMEvent<CompositionEvent, HTMLDivElement>) {
+    config.onCompositionEnd?.(event)
+
+    if (event.defaultPrevented) {
+      return
+    }
+
     const elementText = event.currentTarget.textContent || ''
 
     if (textContent() === elementText) {
       return
     }
 
-    // If browser modified DOM during composition, sync our state
     const selection = getSelectionOffsets(event.currentTarget)
+
     setTextContent(elementText)
     props.onTextContent?.(elementText)
+
     select(element, { anchor: selection.start, focus: selection.focus })
   }
 
-  createEffect(() => {
-    const elementTextContent = c
-      .toArray()
-      .map(value => (value instanceof Element ? value.textContent : value))
-      .join('')
-    if (elementTextContent !== textContentWithTrailingNewLine()) {
-      console.warn(
-        `⚠️ WARNING ⚠️
-- props.textContent and the textContent of props.children(textContent) are not equal!
+  createEffect(
+    on(
+      () => [textContentWithTrailingNewLine(), c()] as const,
+      ([textContentWithTrailingNewLine]) => {
+        const textContent = element.textContent
+        if (textContent !== textContentWithTrailingNewLine) {
+          console.warn(
+            `⚠️ WARNING ⚠️
+- props.textContent and the container's textContent are not equal!
 - This breaks core-assumptions of <ContentEditable/> and will cause undefined behaviors!
 - see www.github.com/bigmistqke/solid-contenteditable/#limitations-with-render-prop`,
-      )
-      console.table({
-        'props.textContent': textContentWithTrailingNewLine(),
-        'element.textContent': elementTextContent,
-      })
-    }
-  })
+          )
+          console.table({
+            'props.textContent': textContentWithTrailingNewLine,
+            'element.textContent': textContent,
+          })
+        }
+      },
+    ),
+  )
 
   return (
     <div
