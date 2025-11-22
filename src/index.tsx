@@ -9,7 +9,9 @@ import {
   mergeProps,
   on,
   splitProps,
+  ValidComponent,
 } from 'solid-js'
+import { Dynamic } from 'solid-js/web'
 
 const DEBUG = import.meta.env['DEV'] && new URLSearchParams(window.location.search).get('debug')
 const IS_MAC = navigator.platform.startsWith('Mac')
@@ -548,19 +550,31 @@ function dispatchUndoEvent(event: DOMEvent<KeyboardEvent>) {
 /*                                                                                */
 /**********************************************************************************/
 
-export interface ContentEditableProps<T extends string | never = never>
-  extends Omit<
-    ComponentProps<'div'>,
-    | 'children'
-    | 'contenteditable'
-    | 'textContent'
-    | 'onInput'
-    | 'style'
-    | 'onBeforeInput'
-    | 'onCompositionEnd'
-    | 'onUndo'
-    | 'onRedo'
-  > {
+export type Keybinding<TPatchKind> = Record<
+  string,
+  (data: {
+    textContent: string
+    range: RangeOffsets
+    event: KeyboardEvent & { currentTarget: HTMLElement }
+  }) => Patch<TPatchKind> | null
+>
+
+export type ContentEditableProps<
+  TComponent extends ValidComponent,
+  TPatchKind extends string | never = never,
+> = Omit<
+  ComponentProps<TComponent>,
+  | 'children'
+  | 'contenteditable'
+  | 'textContent'
+  | 'onInput'
+  | 'style'
+  | 'onBeforeInput'
+  | 'onCompositionEnd'
+  | 'onUndo'
+  | 'onRedo'
+> & {
+  as: TComponent
   /**
    * Add additional key-bindings.
    * @warning
@@ -569,14 +583,7 @@ export interface ContentEditableProps<T extends string | never = never>
    *
    * [see](https://superuser.com/a/1238062)
    */
-  keyBindings?: Record<
-    string,
-    (data: {
-      textContent: string
-      range: RangeOffsets
-      event: KeyboardEvent & { currentTarget: HTMLElement }
-    }) => Patch<T> | null
-  >
+  keyBindings?: Keybinding<TPatchKind>
   /** If contentEditable is editable or not. Defaults to `true`. */
   editable?: boolean
   /**
@@ -586,7 +593,7 @@ export interface ContentEditableProps<T extends string | never = never>
    * @param history - The history object with past and future stacks
    * @returns Array of patches that should be undone (applied in reverse)
    */
-  onUndo?: HistoryHandler<T>
+  onUndo?: HistoryHandler<TPatchKind>
   /**
    * Callback to handle redo operations.
    * If not provided, uses the default redo behavior.
@@ -594,7 +601,7 @@ export interface ContentEditableProps<T extends string | never = never>
    * @param history - The history object with past and future stacks
    * @returns Array of patches that should be redone (applied forward)
    */
-  onRedo?: HistoryHandler<T>
+  onRedo?: HistoryHandler<TPatchKind>
   onBeforeInput?(event: DOMEvent<InputEvent, HTMLDivElement>): void
   onCompositionEnd?(event: DOMEvent<CompositionEvent, HTMLDivElement>): void
   /** Event-callback called whenever `content` is updated */
@@ -616,19 +623,23 @@ export interface ContentEditableProps<T extends string | never = never>
   textContent: string
 }
 
-export function ContentEditable<T extends string = never>(props: ContentEditableProps<T>) {
+export function ContentEditable<
+  TComponent extends ValidComponent,
+  TPatchKind extends string = never,
+>(props: ContentEditableProps<TComponent, TPatchKind>) {
   const [config, rest] = splitProps(
     mergeProps(
       {
         spellcheck: false,
         editable: true,
         singleline: false,
-        onRedo: defaultRedo as HistoryHandler<T>,
-        onUndo: defaultUndo as HistoryHandler<T>,
+        onRedo: defaultRedo as HistoryHandler<TPatchKind>,
+        onUndo: defaultUndo as HistoryHandler<TPatchKind>,
       },
       props,
     ),
     [
+      'as',
       'editable',
       'keyBindings',
       'onBeforeInput',
@@ -640,10 +651,10 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       'singleline',
       'style',
       'textContent',
-    ] satisfies Array<keyof Partial<ContentEditableProps>>,
+    ],
   )
   const [textContent, setTextContent] = createWritable(() => props.textContent)
-  const history = createHistory<T>()
+  const history = createHistory<TPatchKind>()
   let element: HTMLDivElement = null!
 
   // Add an additional newline if the value ends with a newline,
@@ -662,7 +673,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
     ),
   )
 
-  function applyPatch(patch: Patch<T>) {
+  function applyPatch(patch: Patch<TPatchKind>) {
     history.past.push(patch)
 
     const oldValue = textContent()
@@ -775,7 +786,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
         }
 
         applyPatch({
-          kind: event.inputType as T,
+          kind: event.inputType as TPatchKind,
           data,
           range,
           selection: getSelectionOffsets(event.currentTarget),
@@ -799,6 +810,7 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       if (keyCombo && keyCombo in keybindings) {
         const createPatch = keybindings[keyCombo]!
 
+        // @ts-expect-error
         const patch = createPatch({
           textContent: textContent(),
           range: getSelectionOffsets(event.currentTarget),
@@ -925,7 +937,9 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
   )
 
   return (
-    <div
+    // @ts-expect-error
+    <Dynamic
+      component={(props.as ?? 'div') as TComponent}
       ref={element}
       role="textbox"
       tabIndex={0}
@@ -944,6 +958,6 @@ export function ContentEditable<T extends string = never>(props: ContentEditable
       {...rest}
     >
       {c()}
-    </div>
+    </Dynamic>
   )
 }
