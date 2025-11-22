@@ -54,7 +54,8 @@
     "test:json": "playwright test -c test/playwright.config.ts --reporter=json",
     "test:ui": "pnpm test -- --ui",
     "test:serve": "vite serve test",
-    "update-deps": "pnpm up -Li"
+    "update-deps": "pnpm up -Li",
+    "release": "pnpm bumpp && pnpm publish"
   },
   "peerDependencies": {
     "solid-js": "^1.6.0"
@@ -66,6 +67,7 @@
     "@types/node": "^20.12.12",
     "@typescript-eslint/eslint-plugin": "^7.9.0",
     "@typescript-eslint/parser": "^7.9.0",
+    "bumpp": "^10.3.1",
     "concurrently": "^8.2.2",
     "esbuild": "^0.21.3",
     "esbuild-plugin-solid": "^0.6.0",
@@ -84,7 +86,8 @@
     "vitest": "^1.6.0"
   },
   "keywords": [
-    "solid"
+    "solid",
+    "contenteditable"
   ],
   "packageManager": "pnpm@9.1.1",
   "engines": {
