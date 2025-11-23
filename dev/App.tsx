@@ -1,27 +1,7 @@
-import { For, Show, type Accessor, type ComponentProps, type JSX } from 'solid-js'
+import { onMount, Show, type ComponentProps, type JSX } from 'solid-js'
 import { Dynamic } from 'solid-js/web'
-import { ContentEditable } from '../src'
+import { ContentEditable, Split } from '../src'
 import './App.css'
-
-function Split(props: {
-  value: string
-  delimiter: string
-  children: (value: string, index: Accessor<number>) => JSX.Element
-}) {
-  return (
-    <For each={props.value.split(props.delimiter)}>
-      {(value, index) => {
-        const isLast = () => index() === props.value.split(props.delimiter).length - 1
-        return (
-          <>
-            {props.children(value, index)}
-            <Show when={!isLast()}>{props.delimiter}</Show>
-          </>
-        )
-      }}
-    </For>
-  )
-}
 
 function Button(props: Omit<ComponentProps<'span'>, 'style'> & { style?: JSX.CSSProperties }) {
   return (
@@ -133,12 +113,19 @@ function HashTagHighlighter(props: { singleline?: boolean }) {
 }
 
 export function App() {
+  let element
+
+  onMount(() => console.log(element))
   return (
     <>
       <h1>solid-contenteditable</h1>
       <div class="list">
         <h3>solid-contenteditable</h3>
-        <ContentEditable textContent="     #hallo    #test" class="contentEditable" />
+        <ContentEditable
+          ref={element!}
+          textContent="     #hallo    #test"
+          class="contentEditable"
+        />
         <h3>
           solid-contenteditable: <i>singleline</i>
         </h3>
