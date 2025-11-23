@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@solid-primitives/refs':
+        specifier: ^1.1.2
+        version: 1.1.2(solid-js@1.8.17)
       eslint-scope:
         specifier: ^7.2.2
         version: 7.2.2
@@ -820,6 +823,16 @@ packages:
 
   '@sinclair/typebox@0.27.8':
     resolution: {integrity: sha512-+Fj43pSMwJs4KRrH/938Uf+uAELIgVBmQzg/q1YG10djyfA3TnrU8N8XzqCh/okZdszqBQTZf96idMfE5lnwTA==}
+
+  '@solid-primitives/refs@1.1.2':
+    resolution: {integrity: sha512-K7tf2thy7L+YJjdqXspXOg5xvNEOH8tgEWsp0+1mQk3obHBRD6hEjYZk7p7FlJphSZImS35je3UfmWuD7MhDfg==}
+    peerDependencies:
+      solid-js: ^1.6.12
+
+  '@solid-primitives/utils@6.3.2':
+    resolution: {integrity: sha512-hZ/M/qr25QOCcwDPOHtGjxTD8w2mNyVAYvcfgwzBHq2RwNqHNdDNsMZYap20+ruRwW4A3Cdkczyoz0TSxLCAPQ==}
+    peerDependencies:
+      solid-js: ^1.6.12
 
   '@solidjs/testing-library@0.8.10':
     resolution: {integrity: sha512-qdeuIerwyq7oQTIrrKvV0aL9aFeuwTd86VYD3afdq5HYEwoox1OBTJy4y8A3TFZr8oAR0nujYgCzY/8wgHGfeQ==}
@@ -2957,6 +2970,15 @@ snapshots:
     optional: true
 
   '@sinclair/typebox@0.27.8': {}
+
+  '@solid-primitives/refs@1.1.2(solid-js@1.8.17)':
+    dependencies:
+      '@solid-primitives/utils': 6.3.2(solid-js@1.8.17)
+      solid-js: 1.8.17
+
+  '@solid-primitives/utils@6.3.2(solid-js@1.8.17)':
+    dependencies:
+      solid-js: 1.8.17
 
   '@solidjs/testing-library@0.8.10(solid-js@1.8.17)':
     dependencies:

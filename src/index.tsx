@@ -1,3 +1,4 @@
+import { mergeRefs } from '@solid-primitives/refs'
 import {
   type Accessor,
   children,
@@ -9,9 +10,9 @@ import {
   mergeProps,
   on,
   splitProps,
-  ValidComponent,
 } from 'solid-js'
 import { Dynamic } from 'solid-js/web'
+export * from './utils'
 
 const DEBUG = import.meta.env['DEV'] && new URLSearchParams(window.location.search).get('debug')
 const IS_MAC = navigator.platform.startsWith('Mac')
@@ -560,7 +561,7 @@ export type Keybinding<TPatchKind> = Record<
 >
 
 export type ContentEditableProps<
-  TComponent extends ValidComponent,
+  TComponent extends keyof JSX.IntrinsicElements,
   TPatchKind extends string | never = never,
 > = Omit<
   ComponentProps<TComponent>,
@@ -571,10 +572,8 @@ export type ContentEditableProps<
   | 'style'
   | 'onBeforeInput'
   | 'onCompositionEnd'
-  | 'onUndo'
-  | 'onRedo'
 > & {
-  as: TComponent
+  as?: TComponent
   /**
    * Add additional key-bindings.
    * @warning
@@ -624,7 +623,7 @@ export type ContentEditableProps<
 }
 
 export function ContentEditable<
-  TComponent extends ValidComponent,
+  TComponent extends keyof JSX.IntrinsicElements = 'div',
   TPatchKind extends string = never,
 >(props: ContentEditableProps<TComponent, TPatchKind>) {
   const [config, rest] = splitProps(
@@ -643,6 +642,7 @@ export function ContentEditable<
       'editable',
       'keyBindings',
       'onBeforeInput',
+      'onBeforeInput',
       'onCompositionEnd',
       'onRedo',
       'onTextContent',
@@ -651,11 +651,14 @@ export function ContentEditable<
       'singleline',
       'style',
       'textContent',
+      'onCompositionEnd',
+      // @ts-expect-error
+      'ref',
     ],
   )
   const [textContent, setTextContent] = createWritable(() => props.textContent)
   const history = createHistory<TPatchKind>()
-  let element: HTMLDivElement = null!
+  let element: HTMLElement = null!
 
   // Add an additional newline if the value ends with a newline,
   // otherwise the browser will not display the trailing newline.
@@ -937,10 +940,11 @@ export function ContentEditable<
   )
 
   return (
-    // @ts-expect-error
-    <Dynamic
+    /*  @ts-expect-error */
+    <Dynamic<TComponent>
       component={(props.as ?? 'div') as TComponent}
-      ref={element}
+      /*  @ts-expect-error */
+      ref={mergeRefs(props.ref, _element => (element = _element))}
       role="textbox"
       tabIndex={0}
       aria-multiline={!config.singleline}
